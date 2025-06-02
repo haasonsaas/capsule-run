@@ -281,6 +281,7 @@ pub struct TimeoutMonitor {
     start_time: Instant,
     receiver: mpsc::Receiver<()>,
     _handle: thread::JoinHandle<()>,
+    timed_out: std::cell::Cell<bool>,
 }
 
 #[allow(dead_code)] // Part of API design but not yet used
@@ -301,13 +302,31 @@ impl TimeoutMonitor {
                 start_time,
                 receiver,
                 _handle: handle,
+                timed_out: std::cell::Cell::new(false),
             },
             sender,
         )
     }
 
     pub fn check_timeout(&self) -> bool {
-        self.receiver.try_recv().is_ok()
+        // If we already detected a timeout, return true
+        if self.timed_out.get() {
+            return true;
+        }
+        
+        // Check if timeout message was received
+        if self.receiver.try_recv().is_ok() {
+            self.timed_out.set(true);
+            return true;
+        }
+        
+        // Also check elapsed time as a fallback
+        if self.start_time.elapsed() >= self.timeout_duration {
+            self.timed_out.set(true);
+            return true;
+        }
+        
+        false
     }
 
     pub fn elapsed(&self) -> Duration {
