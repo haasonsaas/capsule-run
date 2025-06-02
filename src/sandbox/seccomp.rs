@@ -28,10 +28,10 @@ impl SeccompFilter {
 
     pub fn setup_allowlist(&mut self) -> CapsuleResult<()> {
         let mut ctx = self.ctx.lock().unwrap();
-        
+
         // Define allowed syscalls in a cross-platform way
         let mut allowed_syscalls = Vec::new();
-        
+
         // Essential I/O operations (universal)
         allowed_syscalls.extend_from_slice(&[
             libc::SYS_read,
@@ -43,7 +43,7 @@ impl SeccompFilter {
             libc::SYS_close,
             libc::SYS_lseek,
         ]);
-        
+
         // File operations (universal modern syscalls)
         allowed_syscalls.extend_from_slice(&[
             libc::SYS_openat,
@@ -75,7 +75,7 @@ impl SeccompFilter {
             libc::SYS_dup3,
             libc::SYS_pipe2,
         ]);
-        
+
         // Architecture-specific legacy syscalls (x86/x86_64 only)
         #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
         {
@@ -115,10 +115,10 @@ impl SeccompFilter {
                 libc::SYS_get_thread_area,
             ]);
         }
-        
+
         // Directory operations
         allowed_syscalls.push(libc::SYS_getdents64);
-        
+
         // Memory management (universal)
         allowed_syscalls.extend_from_slice(&[
             libc::SYS_mmap,
@@ -133,7 +133,7 @@ impl SeccompFilter {
             libc::SYS_mlock2,
             libc::SYS_memfd_create,
         ]);
-        
+
         // Process/thread management (universal)
         allowed_syscalls.extend_from_slice(&[
             libc::SYS_getpid,
@@ -151,7 +151,7 @@ impl SeccompFilter {
             libc::SYS_getpgid,
             libc::SYS_getsid,
         ]);
-        
+
         // Time operations (universal)
         allowed_syscalls.extend_from_slice(&[
             libc::SYS_gettimeofday,
@@ -162,7 +162,7 @@ impl SeccompFilter {
             libc::SYS_clock_nanosleep,
             libc::SYS_nanosleep,
         ]);
-        
+
         // Signal handling (universal)
         allowed_syscalls.extend_from_slice(&[
             libc::SYS_kill,
@@ -177,7 +177,7 @@ impl SeccompFilter {
             libc::SYS_rt_sigqueueinfo,
             libc::SYS_rt_sigreturn,
         ]);
-        
+
         // Process execution and control (universal)
         allowed_syscalls.extend_from_slice(&[
             libc::SYS_execve,
@@ -187,7 +187,7 @@ impl SeccompFilter {
             libc::SYS_exit,
             libc::SYS_exit_group,
         ]);
-        
+
         // Polling and event management (universal modern syscalls)
         allowed_syscalls.extend_from_slice(&[
             libc::SYS_pselect6,
@@ -201,7 +201,7 @@ impl SeccompFilter {
             libc::SYS_timerfd_settime,
             libc::SYS_timerfd_gettime,
         ]);
-        
+
         // Resource limits (universal)
         allowed_syscalls.extend_from_slice(&[
             libc::SYS_getrlimit,
@@ -209,25 +209,19 @@ impl SeccompFilter {
             libc::SYS_prlimit64,
             libc::SYS_getrusage,
         ]);
-        
+
         // Thread operations (universal)
         allowed_syscalls.extend_from_slice(&[
             libc::SYS_futex,
             libc::SYS_set_tid_address,
             libc::SYS_gettid,
         ]);
-        
+
         // Filesystem info (universal)
-        allowed_syscalls.extend_from_slice(&[
-            libc::SYS_statfs,
-            libc::SYS_fstatfs,
-        ]);
-        
+        allowed_syscalls.extend_from_slice(&[libc::SYS_statfs, libc::SYS_fstatfs]);
+
         // fcntl operations (universal)
-        allowed_syscalls.extend_from_slice(&[
-            libc::SYS_fcntl,
-            libc::SYS_ioctl,
-        ]);
+        allowed_syscalls.extend_from_slice(&[libc::SYS_fcntl, libc::SYS_ioctl]);
 
         for &syscall in &allowed_syscalls {
             ctx.inner
