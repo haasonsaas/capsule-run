@@ -1,5 +1,8 @@
+#[cfg(target_os = "linux")]
 use crate::error::{CapsuleResult, SandboxError};
+#[cfg(target_os = "linux")]
 use nix::sched::{CloneFlags, unshare};
+#[cfg(target_os = "linux")]
 use nix::unistd::{getuid, getgid, Uid, Gid};
 use std::fs::{File, OpenOptions};
 use std::io::Write;

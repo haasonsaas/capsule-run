@@ -1,8 +1,7 @@
 use crate::error::{CapsuleResult, ExecutionError};
-use std::io::{Read, Write};
+use std::io::Read;
 use std::process::{ChildStdout, ChildStderr};
 use std::thread;
-use std::sync::{Arc, Mutex};
 use std::sync::mpsc;
 use std::time::Duration;
 

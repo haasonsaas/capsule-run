@@ -1,13 +1,11 @@
 pub mod io;
 pub mod monitor;
 
-use crate::api::schema::{ExecutionRequest, ExecutionResponse, ExecutionMetrics, ExecutionTimestamps};
-use crate::error::{CapsuleResult, ExecutionError, ErrorCode};
+use crate::api::schema::{ExecutionRequest, ExecutionResponse, ExecutionMetrics};
+use crate::error::{CapsuleResult, CapsuleError, ExecutionError, ErrorCode};
 use crate::sandbox::{Sandbox, ResourceUsage};
 use chrono::{DateTime, Utc};
-use std::collections::HashMap;
 use std::process::{Command, Stdio};
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
@@ -82,17 +80,7 @@ impl Executor {
         started: DateTime<Utc>,
     ) -> CapsuleResult<ExecutionResponse> {
         let start_time = Instant::now();
-        
-        // Setup timeout monitor
-        let (timeout_monitor, _timeout_sender) = TimeoutMonitor::new(
-            Duration::from_millis(request.timeout_ms)
-        );
-
-        // Setup resource monitoring
-        let resource_monitor = ResourceMonitor::new(
-            Arc::new(SandboxResourceProvider::new(&self.sandbox)),
-            Duration::from_millis(100), // Monitor every 100ms
-        );
+        let timeout_duration = Duration::from_millis(request.timeout_ms);
 
         // Prepare command
         let mut cmd = Command::new(&request.command[0]);
@@ -115,103 +103,99 @@ impl Executor {
             ExecutionError::SpawnFailed(format!("Failed to spawn command: {}", e))
         })?;
 
-        let child_pid = child.id();
-
         // Setup I/O capture
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
         let io_capture = IoCapture::new(stdout, stderr, request.resources.max_output_bytes);
 
-        // Setup process monitoring
-        let process_monitor = ProcessMonitor::new(child_pid);
-
-        // Main execution loop
-        let execution_result = tokio::task::spawn_blocking(move || {
-            loop {
-                // Check timeout
-                if timeout_monitor.check_timeout() {
-                    let _ = child.kill();
-                    let completed = Utc::now();
-                    return Ok(ExecutionResponse::timeout(
-                        self.execution_id,
-                        request.timeout_ms,
-                        started,
-                        completed,
-                    ));
-                }
-
-                // Check if process has exited
-                match child.try_wait() {
-                    Ok(Some(status)) => {
-                        // Process has exited
-                        let exit_code = status.code().unwrap_or(-1);
-                        
-                        // Collect I/O
-                        let (stdout, stderr) = io_capture.wait_for_completion()?;
-                        
-                        // Get final resource usage
-                        let monitoring_result = resource_monitor.stop_and_get_result()?;
-                        let final_usage = self.sandbox.get_resource_usage()?;
-                        
-                        let completed = Utc::now();
-                        
-                        let metrics = ExecutionMetrics {
-                            wall_time_ms: monitoring_result.wall_time.as_millis() as u64,
-                            cpu_time_ms: final_usage.cpu_time_us / 1000,
-                            user_time_ms: final_usage.user_time_us / 1000,
-                            kernel_time_ms: final_usage.kernel_time_us / 1000,
-                            max_memory_bytes: monitoring_result.peak_memory,
-                            io_bytes_read: final_usage.io_bytes_read,
-                            io_bytes_written: final_usage.io_bytes_written,
-                        };
-
-                        return Ok(ExecutionResponse::success(
-                            self.execution_id,
-                            exit_code,
-                            stdout,
-                            stderr,
-                            metrics,
-                            started,
-                            completed,
-                        ));
-                    }
-                    Ok(None) => {
-                        // Process is still running
-                    }
-                    Err(e) => {
-                        let _ = child.kill();
-                        return Err(ExecutionError::MonitoringError(format!(
-                            "Failed to check process status: {}", e
-                        )).into());
-                    }
-                }
-
-                // Check for OOM kill
-                if let Ok(true) = self.sandbox.check_oom_killed() {
-                    let _ = child.kill();
-                    let completed = Utc::now();
-                    return Ok(ExecutionResponse::error(
-                        self.execution_id,
-                        crate::api::schema::ErrorResponse {
-                            code: "E4002".to_string(),
-                            message: "Process killed due to memory limit".to_string(),
-                            details: Some(serde_json::json!({
-                                "memory_limit": request.resources.memory_bytes
-                            })),
-                        },
-                        started,
-                        completed,
-                    ));
-                }
-
-                // Small sleep to avoid busy waiting
-                std::thread::sleep(Duration::from_millis(10));
+        // Simple execution loop
+        loop {
+            // Check timeout
+            if start_time.elapsed() >= timeout_duration {
+                let _ = child.kill();
+                let completed = Utc::now();
+                return Ok(ExecutionResponse::timeout(
+                    self.execution_id,
+                    request.timeout_ms,
+                    started,
+                    completed,
+                ));
             }
-        }).await.map_err(|e| {
-            ExecutionError::MonitoringError(format!("Execution task failed: {}", e))
-        })??;
 
-        Ok(execution_result)
+            // Check if process has exited
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    // Process has exited
+                    let exit_code = status.code().unwrap_or(-1);
+                    
+                    // Collect I/O
+                    let (stdout, stderr) = io_capture.wait_for_completion()?;
+                    
+                    // Get basic resource usage
+                    let final_usage = self.sandbox.get_resource_usage().unwrap_or_else(|_| ResourceUsage {
+                        memory_bytes: 0,
+                        cpu_time_us: 0,
+                        user_time_us: 0,
+                        kernel_time_us: 0,
+                        io_bytes_read: 0,
+                        io_bytes_written: 0,
+                    });
+                    
+                    let completed = Utc::now();
+                    let wall_time = start_time.elapsed();
+                    
+                    let metrics = ExecutionMetrics {
+                        wall_time_ms: wall_time.as_millis() as u64,
+                        cpu_time_ms: final_usage.cpu_time_us / 1000,
+                        user_time_ms: final_usage.user_time_us / 1000,
+                        kernel_time_ms: final_usage.kernel_time_us / 1000,
+                        max_memory_bytes: final_usage.memory_bytes,
+                        io_bytes_read: final_usage.io_bytes_read,
+                        io_bytes_written: final_usage.io_bytes_written,
+                    };
+
+                    return Ok(ExecutionResponse::success(
+                        self.execution_id,
+                        exit_code,
+                        stdout,
+                        stderr,
+                        metrics,
+                        started,
+                        completed,
+                    ));
+                }
+                Ok(None) => {
+                    // Process is still running
+                }
+                Err(e) => {
+                    let _ = child.kill();
+                    return Err(ExecutionError::MonitoringError(format!(
+                        "Failed to check process status: {}", e
+                    )).into());
+                }
+            }
+
+            // Check for OOM kill
+            if let Ok(true) = self.sandbox.check_oom_killed() {
+                let _ = child.kill();
+                let completed = Utc::now();
+                return Ok(ExecutionResponse::error(
+                    self.execution_id,
+                    crate::api::schema::ErrorResponse {
+                        code: "E4002".to_string(),
+                        message: "Process killed due to memory limit".to_string(),
+                        details: Some(serde_json::json!({
+                            "memory_limit": request.resources.memory_bytes
+                        })),
+                    },
+                    started,
+                    completed,
+                ));
+            }
+
+            // Small sleep to avoid busy waiting
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
     }
 }
 
@@ -239,6 +223,7 @@ impl<'a> ResourceProvider for SandboxResourceProvider<'a> {
 mod tests {
     use super::*;
     use crate::api::schema::{ResourceLimits, IsolationConfig};
+    use std::collections::HashMap;
 
     #[tokio::test]
     async fn test_executor_simple_command() {

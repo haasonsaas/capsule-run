@@ -185,8 +185,10 @@ impl ProcessMonitor {
         pid: u32,
         stop_flag: Arc<AtomicBool>,
     ) -> CapsuleResult<ProcessStatus> {
-        use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
-        use nix::unistd::Pid;
+        #[cfg(target_os = "linux")]
+        {
+            use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
+            use nix::unistd::Pid;
 
         let nix_pid = Pid::from_raw(pid as i32);
 
@@ -223,6 +225,23 @@ impl ProcessMonitor {
 
             thread::sleep(Duration::from_millis(10));
         }
+        }
+        
+        #[cfg(not(target_os = "linux"))]
+        {
+            // Simple polling implementation for non-Linux platforms
+            loop {
+                if stop_flag.load(Ordering::Relaxed) {
+                    return Ok(ProcessStatus::Running);
+                }
+                
+                if !Self::check_process_exists_simple(pid) {
+                    return Ok(ProcessStatus::Exited(0));
+                }
+                
+                thread::sleep(Duration::from_millis(100));
+            }
+        }
     }
 
     pub fn is_alive(&self) -> bool {
@@ -230,7 +249,21 @@ impl ProcessMonitor {
     }
 
     fn check_process_exists(&self, pid: u32) -> bool {
-        std::path::Path::new(&format!("/proc/{}", pid)).exists()
+        Self::check_process_exists_simple(pid)
+    }
+    
+    fn check_process_exists_simple(pid: u32) -> bool {
+        #[cfg(target_os = "linux")]
+        {
+            std::path::Path::new(&format!("/proc/{}", pid)).exists()
+        }
+        #[cfg(not(target_os = "linux"))]
+        {
+            // On non-Linux, try to send signal 0 to check if process exists
+            unsafe {
+                libc::kill(pid as i32, 0) == 0
+            }
+        }
     }
 }
 

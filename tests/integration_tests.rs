@@ -270,20 +270,25 @@ async fn test_network_isolation() {
 
 // Helper function to check if we can run sandbox tests
 fn can_run_sandbox_tests() -> bool {
-    // Check if we're running in an environment that supports sandboxing
-    // This is a simple check - in a real CI environment you'd want more sophisticated detection
-    
-    // Check if we can create user namespaces
-    if std::path::Path::new("/proc/sys/user/max_user_namespaces").exists() {
-        if let Ok(content) = std::fs::read_to_string("/proc/sys/user/max_user_namespaces") {
-            if let Ok(max_namespaces) = content.trim().parse::<i32>() {
-                return max_namespaces > 0;
+    // Only run full sandbox tests on Linux
+    #[cfg(target_os = "linux")]
+    {
+        // Check if we can create user namespaces
+        if std::path::Path::new("/proc/sys/user/max_user_namespaces").exists() {
+            if let Ok(content) = std::fs::read_to_string("/proc/sys/user/max_user_namespaces") {
+                if let Ok(max_namespaces) = content.trim().parse::<i32>() {
+                    return max_namespaces > 0;
+                }
             }
         }
+        
+        // Check if we're running as root (required for some operations)
+        unsafe { libc::getuid() == 0 }
     }
-    
-    // Check if we're running as root (required for some operations)
-    nix::unistd::getuid().is_root()
+    #[cfg(not(target_os = "linux"))]
+    {
+        false // Don't run sandbox tests on non-Linux platforms
+    }
 }
 
 // Benchmark tests (optional - only run with --features bench)

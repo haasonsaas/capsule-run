@@ -1,17 +1,50 @@
+#[cfg(target_os = "linux")]
 pub mod namespaces;
+#[cfg(target_os = "linux")]
 pub mod cgroups;
+#[cfg(target_os = "linux")]
 pub mod seccomp;
+#[cfg(target_os = "linux")]
 pub mod filesystem;
 
+#[cfg(target_os = "linux")]
 use crate::api::schema::{ResourceLimits, IsolationConfig};
+#[cfg(target_os = "linux")]
 use crate::error::{CapsuleResult, SandboxError};
+#[cfg(target_os = "linux")]
 use uuid::Uuid;
 
+#[cfg(target_os = "linux")]
 pub use namespaces::NamespaceManager;
+#[cfg(target_os = "linux")]
 pub use cgroups::{CgroupManager, ResourceUsage};
+#[cfg(target_os = "linux")]
 pub use seccomp::SeccompFilter;
+#[cfg(target_os = "linux")]
 pub use filesystem::FilesystemManager;
 
+// Stub implementations for non-Linux platforms
+#[cfg(not(target_os = "linux"))]
+pub struct NamespaceManager;
+#[cfg(not(target_os = "linux"))]
+pub struct CgroupManager;
+#[cfg(not(target_os = "linux"))]
+pub struct SeccompFilter;
+#[cfg(not(target_os = "linux"))]
+pub struct FilesystemManager;
+
+#[cfg(not(target_os = "linux"))]
+#[derive(Debug, Clone)]
+pub struct ResourceUsage {
+    pub memory_bytes: u64,
+    pub cpu_time_us: u64,
+    pub user_time_us: u64,
+    pub kernel_time_us: u64,
+    pub io_bytes_read: u64,
+    pub io_bytes_written: u64,
+}
+
+#[cfg(target_os = "linux")]
 pub struct Sandbox {
     pub execution_id: Uuid,
     pub namespace_manager: NamespaceManager,
@@ -20,6 +53,12 @@ pub struct Sandbox {
     pub seccomp_filter: SeccompFilter,
 }
 
+#[cfg(not(target_os = "linux"))]
+pub struct Sandbox {
+    pub execution_id: uuid::Uuid,
+}
+
+#[cfg(target_os = "linux")]
 impl Sandbox {
     pub fn new(execution_id: Uuid) -> CapsuleResult<Self> {
         let namespace_manager = NamespaceManager::new();
@@ -97,6 +136,39 @@ impl Sandbox {
     }
 }
 
+#[cfg(not(target_os = "linux"))]
+impl Sandbox {
+    pub fn new(execution_id: uuid::Uuid) -> crate::error::CapsuleResult<Self> {
+        Ok(Self { execution_id })
+    }
+
+    pub fn setup(&mut self, _resources: &crate::api::ResourceLimits, _isolation: &crate::api::IsolationConfig) -> crate::error::CapsuleResult<()> {
+        Err(crate::error::CapsuleError::Config(
+            "Sandbox functionality is only available on Linux".to_string()
+        ))
+    }
+
+    pub fn get_resource_usage(&self) -> crate::error::CapsuleResult<ResourceUsage> {
+        Ok(ResourceUsage {
+            memory_bytes: 0,
+            cpu_time_us: 0,
+            user_time_us: 0,
+            kernel_time_us: 0,
+            io_bytes_read: 0,
+            io_bytes_written: 0,
+        })
+    }
+
+    pub fn check_oom_killed(&self) -> crate::error::CapsuleResult<bool> {
+        Ok(false)
+    }
+
+    pub fn cleanup(&self) -> crate::error::CapsuleResult<()> {
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "linux")]
 impl Drop for Sandbox {
     fn drop(&mut self) {
         let _ = self.cleanup();

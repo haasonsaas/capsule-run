@@ -186,16 +186,11 @@ Options:
 
 ## Contributing
 
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-Licensed under either of:
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
-- MIT License ([LICENSE-MIT](LICENSE-MIT))
-
-at your option.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Comparison with Alternatives
 
