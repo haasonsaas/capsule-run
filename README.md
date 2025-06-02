@@ -80,7 +80,7 @@ capsule-run implements defense-in-depth security:
 1. **User Namespaces**: Maps container root to unprivileged host user
 2. **Mount Namespaces**: Isolated filesystem with pivot_root
 3. **PID Namespaces**: Process isolation with custom init
-4. **Seccomp Filters**: Strict syscall allowlist (~50 permitted syscalls)
+4. **Seccomp Filters**: Strict syscall allowlist (55 permitted syscalls)
 5. **Capability Dropping**: All Linux capabilities removed
 6. **Resource Limits**: cgroups v2 enforcement
 

@@ -29,199 +29,104 @@ impl SeccompFilter {
     pub fn setup_allowlist(&mut self) -> CapsuleResult<()> {
         let mut ctx = self.ctx.lock().unwrap();
 
-        // Define allowed syscalls in a cross-platform way
+        // Define a minimal set of allowed syscalls for sandboxed execution
         let mut allowed_syscalls = Vec::new();
 
-        // Essential I/O operations (universal)
+        // Essential I/O operations (8 syscalls)
         allowed_syscalls.extend_from_slice(&[
             libc::SYS_read,
             libc::SYS_write,
             libc::SYS_readv,
             libc::SYS_writev,
-            libc::SYS_pread64,
-            libc::SYS_pwrite64,
             libc::SYS_close,
             libc::SYS_lseek,
-        ]);
-
-        // File operations (universal modern syscalls)
-        allowed_syscalls.extend_from_slice(&[
-            libc::SYS_openat,
-            libc::SYS_faccessat,
-            libc::SYS_fstat,
-            libc::SYS_newfstatat,
-            libc::SYS_readlinkat,
-            libc::SYS_getcwd,
-            libc::SYS_chdir,
-            libc::SYS_fchdir,
-            libc::SYS_mkdirat,
-            libc::SYS_unlinkat,
-            libc::SYS_renameat,
-            libc::SYS_renameat2,
-            libc::SYS_linkat,
-            libc::SYS_symlinkat,
-            libc::SYS_fchmod,
-            libc::SYS_fchmodat,
-            libc::SYS_fchown,
-            libc::SYS_fchownat,
-            libc::SYS_truncate,
-            libc::SYS_ftruncate,
-            libc::SYS_fallocate,
-            libc::SYS_fsync,
-            libc::SYS_fdatasync,
-            libc::SYS_sync,
-            libc::SYS_syncfs,
             libc::SYS_dup,
             libc::SYS_dup3,
+        ]);
+
+        // Minimal file operations (12 syscalls) - modern syscalls only
+        allowed_syscalls.extend_from_slice(&[
+            libc::SYS_openat,
+            libc::SYS_fstat,
+            libc::SYS_newfstatat,
+            libc::SYS_getcwd,
+            libc::SYS_chdir,
+            libc::SYS_mkdirat,
+            libc::SYS_unlinkat,
+            libc::SYS_renameat2,
+            libc::SYS_fchmod,
+            libc::SYS_ftruncate,
+            libc::SYS_fsync,
             libc::SYS_pipe2,
         ]);
 
-        // Architecture-specific legacy syscalls (x86/x86_64 only)
-        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
-        {
-            allowed_syscalls.extend_from_slice(&[
-                libc::SYS_open,
-                libc::SYS_creat,
-                libc::SYS_access,
-                libc::SYS_stat,
-                libc::SYS_lstat,
-                libc::SYS_readlink,
-                libc::SYS_mkdir,
-                libc::SYS_rmdir,
-                libc::SYS_unlink,
-                libc::SYS_rename,
-                libc::SYS_link,
-                libc::SYS_symlink,
-                libc::SYS_chmod,
-                libc::SYS_chown,
-                libc::SYS_lchown,
-                libc::SYS_dup2,
-                libc::SYS_pipe,
-                libc::SYS_getdents,
-                libc::SYS_getpgrp,
-                libc::SYS_time,
-                libc::SYS_alarm,
-                libc::SYS_pause,
-                libc::SYS_fork,
-                libc::SYS_vfork,
-                libc::SYS_select,
-                libc::SYS_poll,
-                libc::SYS_epoll_create,
-                libc::SYS_epoll_wait,
-                libc::SYS_eventfd,
-                libc::SYS_signalfd,
-                libc::SYS_arch_prctl,
-                libc::SYS_set_thread_area,
-                libc::SYS_get_thread_area,
-            ]);
-        }
-
-        // Directory operations
+        // Directory operations (1 syscall)
         allowed_syscalls.push(libc::SYS_getdents64);
 
-        // Memory management (universal)
+        // Essential memory management (5 syscalls)
         allowed_syscalls.extend_from_slice(&[
             libc::SYS_mmap,
             libc::SYS_munmap,
             libc::SYS_mprotect,
             libc::SYS_madvise,
-            libc::SYS_mlock,
-            libc::SYS_munlock,
-            libc::SYS_mlockall,
-            libc::SYS_munlockall,
             libc::SYS_brk,
-            libc::SYS_mlock2,
-            libc::SYS_memfd_create,
         ]);
 
-        // Process/thread management (universal)
+        // Minimal process/thread info (5 syscalls)
         allowed_syscalls.extend_from_slice(&[
             libc::SYS_getpid,
-            libc::SYS_getppid,
             libc::SYS_getuid,
-            libc::SYS_geteuid,
             libc::SYS_getgid,
-            libc::SYS_getegid,
-            libc::SYS_getgroups,
-            libc::SYS_setuid,
-            libc::SYS_setgid,
-            libc::SYS_setgroups,
-            libc::SYS_setsid,
-            libc::SYS_setpgid,
-            libc::SYS_getpgid,
-            libc::SYS_getsid,
+            libc::SYS_gettid,
+            libc::SYS_set_tid_address,
         ]);
 
-        // Time operations (universal)
-        allowed_syscalls.extend_from_slice(&[
-            libc::SYS_gettimeofday,
-            libc::SYS_settimeofday,
-            libc::SYS_clock_gettime,
-            libc::SYS_clock_settime,
-            libc::SYS_clock_getres,
-            libc::SYS_clock_nanosleep,
-            libc::SYS_nanosleep,
-        ]);
+        // Time operations (2 syscalls)
+        allowed_syscalls.extend_from_slice(&[libc::SYS_clock_gettime, libc::SYS_nanosleep]);
 
-        // Signal handling (universal)
+        // Essential signal handling (4 syscalls)
         allowed_syscalls.extend_from_slice(&[
-            libc::SYS_kill,
-            libc::SYS_tkill,
-            libc::SYS_tgkill,
-            libc::SYS_sigaltstack,
             libc::SYS_rt_sigaction,
             libc::SYS_rt_sigprocmask,
-            libc::SYS_rt_sigpending,
-            libc::SYS_rt_sigsuspend,
-            libc::SYS_rt_sigtimedwait,
-            libc::SYS_rt_sigqueueinfo,
             libc::SYS_rt_sigreturn,
+            libc::SYS_sigaltstack,
         ]);
 
-        // Process execution and control (universal)
+        // Process execution and control (4 syscalls)
         allowed_syscalls.extend_from_slice(&[
             libc::SYS_execve,
-            libc::SYS_execveat,
             libc::SYS_wait4,
-            libc::SYS_waitid,
             libc::SYS_exit,
             libc::SYS_exit_group,
         ]);
 
-        // Polling and event management (universal modern syscalls)
+        // Essential polling (3 syscalls)
         allowed_syscalls.extend_from_slice(&[
-            libc::SYS_pselect6,
             libc::SYS_ppoll,
             libc::SYS_epoll_create1,
-            libc::SYS_epoll_ctl,
             libc::SYS_epoll_pwait,
-            libc::SYS_eventfd2,
-            libc::SYS_signalfd4,
-            libc::SYS_timerfd_create,
-            libc::SYS_timerfd_settime,
-            libc::SYS_timerfd_gettime,
         ]);
 
-        // Resource limits (universal)
+        // Resource limits (2 syscalls)
+        allowed_syscalls.extend_from_slice(&[libc::SYS_prlimit64, libc::SYS_getrlimit]);
+
+        // Thread synchronization (1 syscall)
+        allowed_syscalls.push(libc::SYS_futex);
+
+        // fcntl for file descriptor operations (1 syscall)
+        allowed_syscalls.push(libc::SYS_fcntl);
+
+        // Additional essential syscalls for compatibility (6 syscalls)
         allowed_syscalls.extend_from_slice(&[
-            libc::SYS_getrlimit,
-            libc::SYS_setrlimit,
-            libc::SYS_prlimit64,
-            libc::SYS_getrusage,
+            libc::SYS_ioctl,       // Terminal operations
+            libc::SYS_getrandom,   // Secure random numbers
+            libc::SYS_sched_yield, // Thread yielding
+            libc::SYS_kill,        // Send signals to own process
+            libc::SYS_tgkill,      // Thread-targeted signals
+            libc::SYS_geteuid,     // Get effective UID
         ]);
 
-        // Thread operations (universal)
-        allowed_syscalls.extend_from_slice(&[
-            libc::SYS_futex,
-            libc::SYS_set_tid_address,
-            libc::SYS_gettid,
-        ]);
-
-        // Filesystem info (universal)
-        allowed_syscalls.extend_from_slice(&[libc::SYS_statfs, libc::SYS_fstatfs]);
-
-        // fcntl operations (universal)
-        allowed_syscalls.extend_from_slice(&[libc::SYS_fcntl, libc::SYS_ioctl]);
+        // Total: ~55 syscalls - a reasonable balance between security and functionality
 
         for &syscall in &allowed_syscalls {
             ctx.inner
