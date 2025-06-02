@@ -25,21 +25,21 @@ graph TB
     end
     
     subgraph "Linux Isolation Layers"
-        Namespaces[Namespaces<br/>user, mount, pid, net]
-        Cgroups[Cgroups v2<br/>memory, cpu, pids]
-        Seccomp[Seccomp Filter<br/>syscall allowlist]
-        Filesystem[Filesystem<br/>pivot_root, bind mounts]
+        Namespaces["Namespaces (user, mount, pid, net)"]
+        Cgroups["Cgroups v2 (memory, cpu, pids)"]
+        Seccomp["Seccomp Filter (syscall allowlist)"]
+        Filesystem["Filesystem (pivot_root, bind mounts)"]
     end
     
     subgraph "macOS Isolation"
-        SetRLimit[setrlimit<br/>process limits]
-        GetRUsage[getrusage<br/>resource monitoring]
+        SetRLimit["setrlimit (process limits)"]
+        GetRUsage["getrusage (resource monitoring)"]
     end
     
     subgraph "Monitoring & I/O"
-        IOCapture[I/O Capture<br/>stdout/stderr streaming]
-        ResourceMonitor[Resource Monitor<br/>memory, cpu, i/o stats]
-        TimeoutMonitor[Timeout Monitor<br/>graceful shutdown]
+        IOCapture["I/O Capture (stdout/stderr streaming)"]
+        ResourceMonitor["Resource Monitor (memory, cpu, i/o stats)"]
+        TimeoutMonitor["Timeout Monitor (graceful shutdown)"]
     end
     
     CLI --> Parser
@@ -160,11 +160,11 @@ graph TB
     end
     
     subgraph "Linux Implementation"
-        LinuxSandbox[Sandbox<br/>Linux]
-        NamespaceManager[NamespaceManager<br/>unshare, clone]
-        CgroupManager[CgroupManager<br/>cgroups v2 API]
-        FilesystemManager[FilesystemManager<br/>mount, pivot_root]
-        SeccompFilter[SeccompFilter<br/>libseccomp]
+        LinuxSandbox["Sandbox (Linux)"]
+        NamespaceManager["NamespaceManager (unshare, clone)"]
+        CgroupManager["CgroupManager (cgroups v2 API)"]
+        FilesystemManager["FilesystemManager (mount, pivot_root)"]
+        SeccompFilter["SeccompFilter (libseccomp)"]
         
         LinuxSandbox --> NamespaceManager
         LinuxSandbox --> CgroupManager
@@ -173,15 +173,15 @@ graph TB
     end
     
     subgraph "macOS Implementation"
-        MacOSSandbox[Sandbox<br/>macOS]
-        MacOSCore[MacOSSandbox<br/>setrlimit, getrusage]
+        MacOSSandbox["Sandbox (macOS)"]
+        MacOSCore["MacOSSandbox (setrlimit, getrusage)"]
         
         MacOSSandbox --> MacOSCore
     end
     
     subgraph "Stub Implementation"
-        StubSandbox[Sandbox<br/>Other OS]
-        StubComponents[Stub Components<br/>No-op implementations]
+        StubSandbox["Sandbox (Other OS)"]
+        StubComponents["Stub Components (No-op implementations)"]
         
         StubSandbox --> StubComponents
     end
@@ -192,12 +192,12 @@ graph TB
         SeccompDisabled[Seccomp Disabled]
     end
     
-    Target -->|cfg(target_os = "linux")| LinuxSandbox
-    Target -->|cfg(target_os = "macos")| MacOSSandbox
-    Target -->|cfg(not(any(linux, macos)))| StubSandbox
+    Target -->|"cfg(target_os = linux)"| LinuxSandbox
+    Target -->|"cfg(target_os = macos)"| MacOSSandbox
+    Target -->|"cfg(not(any(linux, macos)))"| StubSandbox
     
-    SeccompFeature -->|--features seccomp| SeccompEnabled
-    SeccompFeature -->|--no-default-features| SeccompDisabled
+    SeccompFeature -->|"--features seccomp"| SeccompEnabled
+    SeccompFeature -->|"--no-default-features"| SeccompDisabled
     
     SeccompEnabled --> SeccompFilter
     SeccompDisabled -.-> SeccompFilter
@@ -214,27 +214,27 @@ graph TB
 ```mermaid
 graph TD
     subgraph "Host System"
-        HostUser[Host User<br/>UID 1000]
-        HostFS[Host Filesystem<br/>/home, /usr, /etc]
-        HostProcs[Host Processes<br/>PID namespace 0]
-        HostNet[Host Network<br/>Full access]
+        HostUser["Host User (UID 1000)"]
+        HostFS["Host Filesystem (/home, /usr, /etc)"]
+        HostProcs["Host Processes (PID namespace 0)"]
+        HostNet["Host Network (Full access)"]
     end
     
     subgraph "Container Process"
-        ContainerRoot[Container Root<br/>UID 0 → mapped to UID 1000]
-        ContainerFS[Container Filesystem<br/>pivot_root to /tmp/capsule-*]
-        ContainerProcs[Container Processes<br/>PID namespace isolated]
-        ContainerNet[Container Network<br/>No network access]
+        ContainerRoot["Container Root (UID 0 → mapped to UID 1000)"]
+        ContainerFS["Container Filesystem (pivot_root to /tmp/capsule-*)"]
+        ContainerProcs["Container Processes (PID namespace isolated)"]
+        ContainerNet["Container Network (No network access)"]
     end
     
     subgraph "Security Enforcement"
-        UserNS[User Namespace<br/>UID/GID mapping]
-        MountNS[Mount Namespace<br/>Filesystem isolation]
-        PIDNS[PID Namespace<br/>Process isolation]
-        NetNS[Network Namespace<br/>No network by default]
-        Seccomp[Seccomp Filter<br/>~50 allowed syscalls]
-        Cgroups[Cgroups v2<br/>Resource limits]
-        Capabilities[Capability Drop<br/>All capabilities removed]
+        UserNS["User Namespace (UID/GID mapping)"]
+        MountNS["Mount Namespace (Filesystem isolation)"]
+        PIDNS["PID Namespace (Process isolation)"]
+        NetNS["Network Namespace (No network by default)"]
+        Seccomp["Seccomp Filter (~50 allowed syscalls)"]
+        Cgroups["Cgroups v2 (Resource limits)"]
+        Capabilities["Capability Drop (All capabilities removed)"]
     end
     
     HostUser -.->|maps to| ContainerRoot
@@ -266,13 +266,13 @@ graph TD
 ```mermaid
 graph TB
     subgraph "Process Execution"
-        SpawnedProcess[Spawned Process<br/>Command execution]
+        SpawnedProcess["Spawned Process (Command execution)"]
     end
     
     subgraph "Monitoring Threads"
-        ResourceMonitor[Resource Monitor<br/>Memory, CPU tracking]
-        TimeoutMonitor[Timeout Monitor<br/>Deadline enforcement]
-        IOMonitor[I/O Monitor<br/>stdout/stderr capture]
+        ResourceMonitor["Resource Monitor (Memory, CPU tracking)"]
+        TimeoutMonitor["Timeout Monitor (Deadline enforcement)"]
+        IOMonitor["I/O Monitor (stdout/stderr capture)"]
     end
     
     subgraph "Data Sources"
@@ -280,22 +280,22 @@ graph TB
         MacOSSources[macOS Sources]
         
         subgraph "Linux Data"
-            ProcStat[/proc/PID/stat<br/>CPU times]
-            ProcStatus[/proc/PID/status<br/>Memory usage]
-            ProcIO[/proc/PID/io<br/>I/O statistics]
-            CgroupMem[cgroup/memory.current<br/>Memory usage]
-            CgroupEvents[cgroup/memory.events<br/>OOM events]
+            ProcStat["/proc/PID/stat (CPU times)"]
+            ProcStatus["/proc/PID/status (Memory usage)"]
+            ProcIO["/proc/PID/io (I/O statistics)"]
+            CgroupMem["cgroup/memory.current (Memory usage)"]
+            CgroupEvents["cgroup/memory.events (OOM events)"]
         end
         
         subgraph "macOS Data"
-            GetRUsage[getrusage()<br/>CPU, memory]
-            ProcInfo[proc_pidinfo()<br/>Advanced stats]
+            GetRUsage["getrusage() (CPU, memory)"]
+            ProcInfo["proc_pidinfo() (Advanced stats)"]
         end
     end
     
     subgraph "Metrics Collection"
         MetricsAggregator[Metrics Aggregator]
-        ExecutionMetrics[Execution Metrics<br/>Peak memory, CPU time, I/O]
+        ExecutionMetrics["Execution Metrics (Peak memory, CPU time, I/O)"]
     end
     
     SpawnedProcess --> ResourceMonitor
@@ -335,11 +335,11 @@ graph TB
 ```mermaid
 graph TD
     subgraph "Error Categories"
-        ConfigError[Configuration Error<br/>E1xxx]
-        SecurityError[Security Error<br/>E2xxx]
-        ExecutionError[Execution Error<br/>E3xxx]
-        ResourceError[Resource Error<br/>E4xxx]
-        SystemError[System Error<br/>E6xxx]
+        ConfigError["Configuration Error (E1xxx)"]
+        SecurityError["Security Error (E2xxx)"]
+        ExecutionError["Execution Error (E3xxx)"]
+        ResourceError["Resource Error (E4xxx)"]
+        SystemError["System Error (E6xxx)"]
     end
     
     subgraph "Error Sources"
@@ -392,27 +392,27 @@ graph TD
 ```mermaid
 graph TB
     subgraph "Test Levels"
-        UnitTests[Unit Tests<br/>Individual components]
-        IntegrationTests[Integration Tests<br/>Full execution flow]
-        BinaryTests[Binary Tests<br/>CLI interface]
+        UnitTests["Unit Tests (Individual components)"]
+        IntegrationTests["Integration Tests (Full execution flow)"]
+        BinaryTests["Binary Tests (CLI interface)"]
     end
     
     subgraph "Feature Matrix Testing"
-        WithSeccomp[With Seccomp<br/>cargo test]
-        WithoutSeccomp[Without Seccomp<br/>cargo test --no-default-features]
+        WithSeccomp["With Seccomp (cargo test)"]
+        WithoutSeccomp["Without Seccomp (cargo test --no-default-features)"]
     end
     
     subgraph "Platform Testing"
-        LinuxTesting[Linux Testing<br/>Full feature set]
-        MacOSTesting[macOS Testing<br/>Reduced feature set]
-        CITesting[CI Testing<br/>GitHub Actions]
+        LinuxTesting["Linux Testing (Full feature set)"]
+        MacOSTesting["macOS Testing (Reduced feature set)"]
+        CITesting["CI Testing (GitHub Actions)"]
     end
     
     subgraph "Local CI Testing"
-        ActQuick[act quick<br/>Fast validation]
-        ActBasic[act basic<br/>Standard checks]
-        ActComprehensive[act comprehensive<br/>Full validation]
-        ActSecurity[act security<br/>Security validation]
+        ActQuick["act quick (Fast validation)"]
+        ActBasic["act basic (Standard checks)"]
+        ActComprehensive["act comprehensive (Full validation)"]
+        ActSecurity["act security (Security validation)"]
     end
     
     UnitTests --> WithSeccomp
