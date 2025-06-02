@@ -42,7 +42,7 @@ impl IoMonitor {
 }
 
 #[cfg(target_os = "linux")]
-pub fn get_process_io_stats(_pid: u32) -> CapsuleResult<IoStats> {
+pub fn get_process_io_stats(pid: u32) -> CapsuleResult<IoStats> {
     let io_path = format!("/proc/{}/io", pid);
     let content = std::fs::read_to_string(io_path).map_err(|e| {
         crate::error::CapsuleError::Syscall(format!("Failed to read process I/O stats: {}", e))
@@ -96,7 +96,7 @@ pub fn get_process_io_stats(_pid: u32) -> CapsuleResult<IoStats> {
 }
 
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
-pub fn get_process_io_stats(_pid: u32) -> CapsuleResult<IoStats> {
+pub fn get_process_io_stats(pid: u32) -> CapsuleResult<IoStats> {
     // Fallback for unsupported platforms
     Ok(IoStats::default())
 }
