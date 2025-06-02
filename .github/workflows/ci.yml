@@ -13,18 +13,34 @@ jobs:
   check:
     name: Check
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        features: ["", "--no-default-features"]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo check
+      - name: Install libseccomp-dev (for default features)
+        if: matrix.features == ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libseccomp-dev
+      - run: cargo check ${{ matrix.features }}
 
   test:
     name: Test Suite
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        features: ["", "--no-default-features"]
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo test
+      - name: Install libseccomp-dev (for default features)
+        if: matrix.features == ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libseccomp-dev
+      - run: cargo test ${{ matrix.features }}
 
   fmt:
     name: Rustfmt
@@ -44,6 +60,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+      - name: Install libseccomp-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libseccomp-dev
       - run: cargo clippy -- -D warnings
 
   security_audit:
@@ -84,17 +104,38 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       
-      - name: Install cross-compilation tools (Linux)
-        if: matrix.os == 'ubuntu-latest' && matrix.target == 'aarch64-unknown-linux-gnu'
+      - name: Install system dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc-aarch64-linux-gnu
+          sudo apt-get install -y libseccomp-dev
+          if [[ "${{ matrix.target }}" == "aarch64-unknown-linux-gnu" ]]; then
+            sudo apt-get install -y gcc-aarch64-linux-gnu
+          fi
           
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
+        run: |
+          if [[ "${{ matrix.target }}" == *"linux"* ]]; then
+            cargo build --release --target ${{ matrix.target }}
+          else
+            cargo build --release --target ${{ matrix.target }} --no-default-features
+          fi
         
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: capsule-run-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/capsule-run*
+
+  test-macos:
+    name: Test macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check compilation
+        run: cargo check --no-default-features
+      - name: Run tests
+        run: cargo test --no-default-features
+      - name: Check formatting
+        run: cargo fmt --all -- --check

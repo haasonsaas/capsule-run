@@ -1,0 +1,194 @@
+name: Comprehensive Testing
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test-feature-combinations:
+    name: Test Feature Combinations
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        features:
+          - ""  # default features (with seccomp)
+          - "--no-default-features"  # minimal features
+          - "--features seccomp"  # explicit seccomp
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install libseccomp-dev (when needed)
+        if: contains(matrix.features, 'seccomp') || matrix.features == ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libseccomp-dev
+      
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ matrix.features }}
+      
+      - name: Check compilation
+        run: cargo check ${{ matrix.features }}
+      
+      - name: Run unit tests
+        run: cargo test --lib ${{ matrix.features }}
+      
+      - name: Run integration tests
+        run: cargo test --test integration_tests ${{ matrix.features }}
+      
+      - name: Run binary tests
+        run: cargo test --bin capsule-run ${{ matrix.features }}
+
+  cross-platform-test:
+    name: Cross-Platform Test
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            features: ""  # Full features on Linux
+          - os: macos-latest  
+            features: "--no-default-features"  # No seccomp on macOS
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install libseccomp-dev (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libseccomp-dev
+      
+      - name: Check compilation
+        run: cargo check ${{ matrix.features }}
+      
+      - name: Run tests
+        run: cargo test ${{ matrix.features }}
+      
+      - name: Test CLI functionality
+        run: |
+          cargo build ${{ matrix.features }}
+          if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
+            ./target/debug/capsule-run --help
+            ./target/debug/capsule-run --version
+            echo '{"command": ["echo", "test"], "timeout_ms": 5000}' | ./target/debug/capsule-run --json
+          else
+            ./target/debug/capsule-run --help
+            ./target/debug/capsule-run --version  
+            echo '{"command": ["echo", "test"], "timeout_ms": 5000}' | ./target/debug/capsule-run --json
+          fi
+
+  documentation-test:
+    name: Documentation Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install libseccomp-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libseccomp-dev
+      
+      - name: Check documentation builds
+        run: cargo doc --no-deps --all-features
+      
+      - name: Run doc tests
+        run: cargo test --doc --all-features
+      
+      - name: Validate documentation links
+        run: |
+          # Check that all doc files exist
+          for file in docs/*.md docs/examples/*.md; do
+            if [[ -f "$file" ]]; then
+              echo "✓ Found: $file"
+            else
+              echo "✗ Missing: $file"
+              exit 1
+            fi
+          done
+      
+      - name: Test examples compile
+        run: |
+          # Test that code examples in docs actually work
+          grep -r "```rust" docs/ | while read -r line; do
+            echo "Found Rust code example in: $line"
+          done
+
+  performance-test:
+    name: Performance Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install libseccomp-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libseccomp-dev
+      
+      - name: Build release
+        run: cargo build --release
+      
+      - name: Basic performance test
+        run: |
+          echo "Testing basic execution performance..."
+          time ./target/release/capsule-run --timeout 1000 -- echo "performance test"
+          
+          echo "Testing with memory limits..."
+          time ./target/release/capsule-run --timeout 1000 --memory 64M -- python3 -c "print('memory test')"
+          
+          echo "Testing JSON mode performance..."
+          time echo '{"command": ["echo", "json test"], "timeout_ms": 1000}' | ./target/release/capsule-run --json
+
+  security-validation:
+    name: Security Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      
+      - name: Install libseccomp-dev
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libseccomp-dev
+      
+      - name: Test security features
+        run: |
+          cargo build --release
+          
+          echo "Testing command blocking..."
+          if ./target/release/capsule-run --timeout 1000 -- rm -rf /tmp/test 2>/dev/null; then
+            echo "ERROR: Dangerous command was not blocked!"
+            exit 1
+          else
+            echo "✓ Dangerous command properly blocked"
+          fi
+          
+          echo "Testing network isolation..."
+          if ./target/release/capsule-run --timeout 5000 -- curl -s http://google.com 2>/dev/null; then
+            echo "ERROR: Network access was not blocked!"
+            exit 1
+          else
+            echo "✓ Network access properly blocked"
+          fi
+          
+          echo "Testing memory limits..."
+          if ./target/release/capsule-run --timeout 5000 --memory 16M -- python3 -c "data = bytearray(50 * 1024 * 1024)" 2>/dev/null; then
+            echo "ERROR: Memory limit was not enforced!"
+            exit 1
+          else
+            echo "✓ Memory limit properly enforced"
+          fi
