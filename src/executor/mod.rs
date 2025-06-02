@@ -35,10 +35,13 @@ impl Executor {
     pub async fn execute(mut self, request: ExecutionRequest) -> CapsuleResult<ExecutionResponse> {
         let started = Utc::now();
 
-        // Setup sandbox  
+        // Setup sandbox
         match std::sync::Arc::get_mut(&mut self.sandbox)
-            .ok_or_else(|| crate::error::CapsuleError::Config("Sandbox reference error".to_string()))?
-            .setup(&request.resources, &request.isolation) {
+            .ok_or_else(|| {
+                crate::error::CapsuleError::Config("Sandbox reference error".to_string())
+            })?
+            .setup(&request.resources, &request.isolation)
+        {
             Ok(_) => {}
             Err(e) => {
                 let completed = Utc::now();
@@ -112,14 +115,24 @@ impl Executor {
         // Setup I/O capture
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
-        
+
         // Use streaming I/O for long-running processes (> 10 seconds timeout)
         let use_streaming = request.timeout_ms > 10_000;
-        
+
         if use_streaming {
-            return self.execute_with_streaming_io(child, stdout, stderr, request, started, timeout_duration, start_time).await;
+            return self
+                .execute_with_streaming_io(
+                    child,
+                    stdout,
+                    stderr,
+                    request,
+                    started,
+                    timeout_duration,
+                    start_time,
+                )
+                .await;
         }
-        
+
         let io_capture = IoCapture::new(stdout, stderr, request.resources.max_output_bytes);
 
         // Setup monitoring for the process
@@ -129,7 +142,7 @@ impl Executor {
             sandbox_provider,
             std::time::Duration::from_millis(50), // Monitor every 50ms
         );
-        
+
         // Setup I/O monitoring
         let io_monitor = io_stats::IoMonitor::new(process_id);
 
@@ -183,10 +196,10 @@ impl Executor {
 
                     // Stop monitoring and get comprehensive results
                     let monitoring_result = resource_monitor.stop_and_get_result()?;
-                    
+
                     // Get final I/O statistics
                     let io_stats = io_monitor.get_total_stats().unwrap_or_default();
-                    
+
                     // Get final resource usage from monitoring
                     let final_usage = ResourceUsage {
                         memory_bytes: monitoring_result.peak_memory,
@@ -271,7 +284,8 @@ impl Executor {
         use io::StreamingIoCapture;
 
         // Setup streaming I/O capture
-        let streaming_io = StreamingIoCapture::new(stdout, stderr, request.resources.max_output_bytes);
+        let streaming_io =
+            StreamingIoCapture::new(stdout, stderr, request.resources.max_output_bytes);
         let mut stdout_buffer = Vec::new();
         let mut stderr_buffer = Vec::new();
 
@@ -356,12 +370,13 @@ impl Executor {
                 }
                 Ok(None) => {
                     // Process is still running - read streaming data
-                    let (stdout_event, stderr_event) = streaming_io.read_available(Duration::from_millis(10));
-                    
+                    let (stdout_event, stderr_event) =
+                        streaming_io.read_available(Duration::from_millis(10));
+
                     if let Some(io::IoEvent::Data(data)) = stdout_event {
                         stdout_buffer.extend(data);
                     }
-                    
+
                     if let Some(io::IoEvent::Data(data)) = stderr_event {
                         stderr_buffer.extend(data);
                     }
@@ -409,7 +424,6 @@ impl monitor::ResourceProvider for std::sync::Arc<Sandbox> {
         (**self).check_oom_killed()
     }
 }
-
 
 use monitor::ResourceProvider;
 

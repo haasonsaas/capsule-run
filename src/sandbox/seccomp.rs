@@ -21,8 +21,8 @@ impl SeccompFilter {
             SandboxError::SeccompSetup(format!("Failed to create seccomp context: {}", e))
         })?;
 
-        Ok(Self { 
-            ctx: Arc::new(Mutex::new(ThreadSafeFilterContext { inner: ctx }))
+        Ok(Self {
+            ctx: Arc::new(Mutex::new(ThreadSafeFilterContext { inner: ctx })),
         })
     }
 
@@ -203,7 +203,9 @@ impl SeccompFilter {
         Ok(())
     }
 
-    fn add_conditional_rules(ctx: &mut std::sync::MutexGuard<ThreadSafeFilterContext>) -> CapsuleResult<()> {
+    fn add_conditional_rules(
+        ctx: &mut std::sync::MutexGuard<ThreadSafeFilterContext>,
+    ) -> CapsuleResult<()> {
         // Allow clone only for thread creation (CLONE_THREAD flag)
         ctx.inner
             .add_rule_conditional(

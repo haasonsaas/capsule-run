@@ -23,15 +23,23 @@ impl IoMonitor {
 
     pub fn get_current_stats(&mut self) -> CapsuleResult<IoStats> {
         let current = get_process_io_stats(self.pid)?;
-        
+
         // Calculate delta since last measurement
         let _delta = IoStats {
-            read_bytes: current.read_bytes.saturating_sub(self.last_stats.read_bytes),
-            write_bytes: current.write_bytes.saturating_sub(self.last_stats.write_bytes),
-            read_calls: current.read_calls.saturating_sub(self.last_stats.read_calls),
-            write_calls: current.write_calls.saturating_sub(self.last_stats.write_calls),
+            read_bytes: current
+                .read_bytes
+                .saturating_sub(self.last_stats.read_bytes),
+            write_bytes: current
+                .write_bytes
+                .saturating_sub(self.last_stats.write_bytes),
+            read_calls: current
+                .read_calls
+                .saturating_sub(self.last_stats.read_calls),
+            write_calls: current
+                .write_calls
+                .saturating_sub(self.last_stats.write_calls),
         };
-        
+
         self.last_stats = current.clone();
         Ok(current)
     }
@@ -47,12 +55,12 @@ pub fn get_process_io_stats(pid: u32) -> CapsuleResult<IoStats> {
     let content = std::fs::read_to_string(io_path).map_err(|e| {
         crate::error::CapsuleError::Syscall(format!("Failed to read process I/O stats: {}", e))
     })?;
-    
+
     let mut read_bytes = 0u64;
     let mut write_bytes = 0u64;
     let mut read_calls = 0u64;
     let mut write_calls = 0u64;
-    
+
     for line in content.lines() {
         if let Some(value_str) = line.strip_prefix("read_bytes: ") {
             read_bytes = value_str.parse().unwrap_or(0);
@@ -64,7 +72,7 @@ pub fn get_process_io_stats(pid: u32) -> CapsuleResult<IoStats> {
             write_calls = value_str.parse().unwrap_or(0);
         }
     }
-    
+
     Ok(IoStats {
         read_bytes,
         write_bytes,
@@ -88,10 +96,10 @@ pub fn get_process_io_stats(_pid: u32) -> CapsuleResult<IoStats> {
     // Convert block counts to approximate byte counts
     // Note: This is less accurate than Linux /proc/pid/io
     Ok(IoStats {
-        read_bytes: usage.ru_inblock as u64 * 512,  // Approximate: 512 bytes per block
+        read_bytes: usage.ru_inblock as u64 * 512, // Approximate: 512 bytes per block
         write_bytes: usage.ru_oublock as u64 * 512, // Approximate: 512 bytes per block
-        read_calls: 0, // Not available via rusage
-        write_calls: 0, // Not available via rusage
+        read_calls: 0,                             // Not available via rusage
+        write_calls: 0,                            // Not available via rusage
     })
 }
 
@@ -110,7 +118,7 @@ mod macos_advanced {
 
     // libproc structures and constants
     const PROC_PIDTASKINFO: i32 = 4;
-    
+
     #[repr(C)]
     struct ProcTaskInfo {
         pti_virtual_size: u64,
@@ -146,7 +154,7 @@ mod macos_advanced {
 
     pub fn get_detailed_io_stats(pid: u32) -> CapsuleResult<IoStats> {
         let mut task_info: ProcTaskInfo = unsafe { mem::zeroed() };
-        
+
         let result = unsafe {
             proc_pidinfo(
                 pid as i32,
@@ -166,7 +174,7 @@ mod macos_advanced {
         // Use pageins as a proxy for I/O activity
         Ok(IoStats {
             read_bytes: task_info.pti_pageins as u64 * 4096, // Page size
-            write_bytes: 0, // Not directly available
+            write_bytes: 0,                                  // Not directly available
             read_calls: task_info.pti_syscalls_unix as u64,
             write_calls: 0, // Not distinguishable
         })
@@ -176,8 +184,7 @@ mod macos_advanced {
 #[cfg(target_os = "macos")]
 pub fn get_enhanced_io_stats(pid: u32) -> CapsuleResult<IoStats> {
     // Try the enhanced libproc method first, fall back to rusage
-    macos_advanced::get_detailed_io_stats(pid)
-        .or_else(|_| get_process_io_stats(pid))
+    macos_advanced::get_detailed_io_stats(pid).or_else(|_| get_process_io_stats(pid))
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -200,7 +207,7 @@ mod tests {
     fn test_io_monitor() {
         let pid = std::process::id();
         let mut monitor = IoMonitor::new(pid);
-        
+
         // This might fail on some systems due to permissions
         if let Ok(stats) = monitor.get_current_stats() {
             assert!(stats.read_bytes >= 0);
@@ -212,7 +219,7 @@ mod tests {
     #[test]
     fn test_linux_io_stats() {
         let pid = std::process::id();
-        
+
         // This test might fail if /proc/self/io is not readable
         if let Ok(stats) = get_process_io_stats(pid) {
             println!("I/O stats: {:?}", stats);

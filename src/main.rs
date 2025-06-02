@@ -7,7 +7,7 @@ mod sandbox;
 use crate::api::{
     validate_execution_request, BindMount, ExecutionRequest, IsolationConfig, ResourceLimits,
 };
-use crate::config::{load_config, create_default_config_file};
+use crate::config::{create_default_config_file, load_config};
 use crate::error::CapsuleResult;
 use crate::executor::Executor;
 use clap::{ArgAction, Parser};
@@ -202,7 +202,10 @@ fn read_json_request() -> CapsuleResult<ExecutionRequest> {
     Ok(request)
 }
 
-fn create_request_from_cli(cli: &Cli, config: &crate::config::Config) -> CapsuleResult<ExecutionRequest> {
+fn create_request_from_cli(
+    cli: &Cli,
+    config: &crate::config::Config,
+) -> CapsuleResult<ExecutionRequest> {
     if cli.command.is_empty() {
         return Err(crate::error::CapsuleError::Config(
             "No command specified. Use --json for JSON input or provide command arguments."
@@ -268,14 +271,16 @@ fn create_request_from_cli(cli: &Cli, config: &crate::config::Config) -> Capsule
 
     // Use config defaults with CLI overrides
     let timeout_ms = cli.timeout.unwrap_or(config.defaults.timeout_ms);
-    
+
     // Merge environment variables from profile if available
     let mut final_environment = environment;
     if let Some(profile_name) = &cli.profile {
         if let Some(profile) = config.get_profile(profile_name) {
             if let Some(profile_env) = &profile.environment {
                 for (key, value) in profile_env {
-                    final_environment.entry(key.clone()).or_insert_with(|| value.clone());
+                    final_environment
+                        .entry(key.clone())
+                        .or_insert_with(|| value.clone());
                 }
             }
         }

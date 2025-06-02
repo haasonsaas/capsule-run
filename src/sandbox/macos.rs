@@ -44,7 +44,7 @@ impl MacOSSandbox {
                 max_memory_bytes: None,
                 max_cpu_time_seconds: None,
                 max_file_descriptors: Some(1024), // Safe default
-                max_processes: Some(64),           // Safe default
+                max_processes: Some(64),          // Safe default
             },
         })
     }
@@ -164,11 +164,9 @@ impl MacOSSandbox {
 
         Ok(ResourceUsage {
             memory_bytes: usage.ru_maxrss as u64 * 1024, // macOS returns in KB
-            cpu_time_us: (usage.ru_utime.tv_sec as u64 * 1_000_000
-                + usage.ru_utime.tv_usec as u64)
+            cpu_time_us: (usage.ru_utime.tv_sec as u64 * 1_000_000 + usage.ru_utime.tv_usec as u64)
                 + (usage.ru_stime.tv_sec as u64 * 1_000_000 + usage.ru_stime.tv_usec as u64),
-            user_time_us: usage.ru_utime.tv_sec as u64 * 1_000_000
-                + usage.ru_utime.tv_usec as u64,
+            user_time_us: usage.ru_utime.tv_sec as u64 * 1_000_000 + usage.ru_utime.tv_usec as u64,
             kernel_time_us: usage.ru_stime.tv_sec as u64 * 1_000_000
                 + usage.ru_stime.tv_usec as u64,
             io_bytes_read: usage.ru_inblock as u64 * 512, // Approximate
@@ -194,11 +192,9 @@ impl MacOSSandbox {
         if let Some(limits) = &self.resource_limits {
             let limits_clone = limits.clone();
             let process_limits = self.process_limits.clone();
-            
+
             unsafe {
-                cmd.pre_exec(move || {
-                    Self::apply_limits_in_child(&limits_clone, &process_limits)
-                });
+                cmd.pre_exec(move || Self::apply_limits_in_child(&limits_clone, &process_limits));
             }
         }
 
@@ -213,8 +209,8 @@ impl MacOSSandbox {
     }
 
     fn apply_limits_in_child(
-        limits: &ResourceLimits, 
-        process_limits: &ProcessLimits
+        limits: &ResourceLimits,
+        process_limits: &ProcessLimits,
     ) -> Result<(), std::io::Error> {
         unsafe {
             // Set memory limit (RLIMIT_AS - virtual memory)
@@ -229,7 +225,7 @@ impl MacOSSandbox {
                 }
             }
 
-            // Set file descriptor limit (RLIMIT_NOFILE) 
+            // Set file descriptor limit (RLIMIT_NOFILE)
             if let Some(fd_limit) = process_limits.max_file_descriptors {
                 let limit = libc::rlimit {
                     rlim_cur: fd_limit as u64,
@@ -262,7 +258,6 @@ impl MacOSSandbox {
 
         Ok(())
     }
-
 }
 
 impl Drop for MacOSSandbox {

@@ -100,7 +100,7 @@ impl Default for Config {
 impl Config {
     pub fn load_from_file(path: &Path) -> CapsuleResult<Self> {
         let content = std::fs::read_to_string(path)?;
-        
+
         // Support multiple formats
         if path.extension().and_then(|s| s.to_str()) == Some("json") {
             Ok(serde_json::from_str(&content)?)
@@ -120,7 +120,7 @@ impl Config {
                 crate::error::CapsuleError::Config(format!("Failed to serialize config: {}", e))
             })?
         };
-        
+
         std::fs::write(path, content)?;
         Ok(())
     }
@@ -131,24 +131,24 @@ impl Config {
 
     pub fn merge_with_profile(&self, profile_name: Option<&str>) -> Self {
         let mut config = self.clone();
-        
+
         if let Some(profile_name) = profile_name {
             if let Some(profile) = self.get_profile(profile_name) {
                 // Merge profile settings with defaults
                 if let Some(timeout) = profile.timeout_ms {
                     config.defaults.timeout_ms = timeout;
                 }
-                
+
                 if let Some(resources) = &profile.resources {
                     config.defaults.resources = resources.clone();
                 }
-                
+
                 if let Some(isolation) = &profile.isolation {
                     config.defaults.isolation = isolation.clone();
                 }
             }
         }
-        
+
         config
     }
 
@@ -161,14 +161,19 @@ impl Config {
 
         // Check blocked commands first
         if let Some(blocked) = &self.security.blocked_commands {
-            if blocked.iter().any(|blocked_cmd| command_name.contains(blocked_cmd)) {
+            if blocked
+                .iter()
+                .any(|blocked_cmd| command_name.contains(blocked_cmd))
+            {
                 return false;
             }
         }
 
         // Check allowed commands if specified
         if let Some(allowed) = &self.security.allowed_commands {
-            return allowed.iter().any(|allowed_cmd| command_name.contains(allowed_cmd));
+            return allowed
+                .iter()
+                .any(|allowed_cmd| command_name.contains(allowed_cmd));
         }
 
         // If no allowed list is specified, allow by default (after blocked check)
@@ -184,7 +189,7 @@ pub fn load_config() -> CapsuleResult<Config> {
     // Try to load config from various locations
     let config_paths = [
         "capsule-run.toml",
-        "capsule-run.json", 
+        "capsule-run.json",
         "config/capsule-run.toml",
         "config/capsule-run.json",
         "~/.config/capsule-run/config.toml",
@@ -227,24 +232,27 @@ mod tests {
     #[test]
     fn test_config_serialization() {
         let config = Config::default();
-        
+
         // Test TOML serialization
         let toml_file = NamedTempFile::new().unwrap();
         config.save_to_file(toml_file.path()).unwrap();
         let loaded_config = Config::load_from_file(toml_file.path()).unwrap();
-        assert_eq!(config.defaults.timeout_ms, loaded_config.defaults.timeout_ms);
+        assert_eq!(
+            config.defaults.timeout_ms,
+            loaded_config.defaults.timeout_ms
+        );
     }
 
     #[test]
     fn test_command_validation() {
         let config = Config::default();
-        
+
         // Test blocked command
         assert!(!config.validate_command(&["rm".to_string(), "-rf".to_string()]));
-        
+
         // Test allowed command
         assert!(config.validate_command(&["echo".to_string(), "hello".to_string()]));
-        
+
         // Test empty command
         assert!(!config.validate_command(&[]));
     }
@@ -252,7 +260,7 @@ mod tests {
     #[test]
     fn test_profile_merging() {
         let mut config = Config::default();
-        
+
         // Add a test profile
         let profile = ExecutionProfile {
             description: Some("Test profile".to_string()),
@@ -262,11 +270,11 @@ mod tests {
             environment: None,
         };
         config.profiles.insert("test".to_string(), profile);
-        
+
         // Test merging
         let merged = config.merge_with_profile(Some("test"));
         assert_eq!(merged.defaults.timeout_ms, 60_000);
-        
+
         // Test with non-existent profile
         let merged = config.merge_with_profile(Some("nonexistent"));
         assert_eq!(merged.defaults.timeout_ms, 30_000);
