@@ -97,6 +97,10 @@ impl Executor {
             .stderr(Stdio::piped())
             .stdin(Stdio::null());
 
+        // Prepare command with sandbox restrictions (macOS-specific)
+        #[cfg(target_os = "macos")]
+        self.sandbox.prepare_command(&mut cmd)?;
+
         // Spawn the process
         let mut child = cmd
             .spawn()
@@ -105,11 +109,16 @@ impl Executor {
         // Setup I/O capture
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
+        
+        // Use streaming I/O for long-running processes (> 10 seconds timeout)
+        let use_streaming = request.timeout_ms > 10_000;
+        
+        if use_streaming {
+            return self.execute_with_streaming_io(child, stdout, stderr, request, started, timeout_duration, start_time).await;
+        }
+        
         let io_capture = IoCapture::new(stdout, stderr, request.resources.max_output_bytes);
 
-        // Setup monitoring for the process
-        let _process_id = child.id();
-        
         // Enhanced execution loop with better monitoring
         loop {
             // Check timeout
@@ -129,7 +138,7 @@ impl Executor {
                 Ok(Some(status)) => {
                     // Process has exited - determine how it exited
                     let exit_code = status.code().unwrap_or(-1);
-                    
+
                     // Check if process was killed by signal
                     #[cfg(unix)]
                     {
@@ -157,7 +166,7 @@ impl Executor {
                     // Collect I/O
                     let (stdout, stderr) = io_capture.wait_for_completion()?;
 
-                    // Get final resource usage from cgroups
+                    // Get final resource usage from sandbox
                     let final_usage = self.sandbox.get_resource_usage().unwrap_or(ResourceUsage {
                         memory_bytes: 0,
                         cpu_time_us: 0,
@@ -226,11 +235,161 @@ impl Executor {
             tokio::time::sleep(Duration::from_millis(10)).await;
         }
     }
+
+    async fn execute_with_streaming_io(
+        &self,
+        mut child: std::process::Child,
+        stdout: Option<std::process::ChildStdout>,
+        stderr: Option<std::process::ChildStderr>,
+        request: &ExecutionRequest,
+        started: DateTime<Utc>,
+        timeout_duration: Duration,
+        start_time: Instant,
+    ) -> CapsuleResult<ExecutionResponse> {
+        use io::StreamingIoCapture;
+
+        // Setup streaming I/O capture
+        let streaming_io = StreamingIoCapture::new(stdout, stderr, request.resources.max_output_bytes);
+        let mut stdout_buffer = Vec::new();
+        let mut stderr_buffer = Vec::new();
+
+        loop {
+            // Check timeout
+            if start_time.elapsed() >= timeout_duration {
+                let _ = child.kill();
+                let completed = Utc::now();
+                return Ok(ExecutionResponse::timeout(
+                    self.execution_id,
+                    request.timeout_ms,
+                    started,
+                    completed,
+                ));
+            }
+
+            // Check if process has exited
+            match child.try_wait() {
+                Ok(Some(status)) => {
+                    // Process has exited - collect final I/O
+                    let (final_stdout, final_stderr) = streaming_io.collect_remaining()?;
+                    stdout_buffer.extend(final_stdout.as_bytes());
+                    stderr_buffer.extend(final_stderr.as_bytes());
+
+                    let exit_code = status.code().unwrap_or(-1);
+
+                    // Check if process was killed by signal
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::process::ExitStatusExt;
+                        if let Some(signal) = status.signal() {
+                            let completed = Utc::now();
+                            let error = crate::api::schema::ErrorResponse {
+                                code: "E3003".to_string(),
+                                message: format!("Process killed by signal {}", signal),
+                                details: Some(serde_json::json!({
+                                    "signal": signal,
+                                    "signal_name": signal_name(signal)
+                                })),
+                            };
+                            return Ok(ExecutionResponse::error(
+                                self.execution_id,
+                                error,
+                                started,
+                                completed,
+                            ));
+                        }
+                    }
+
+                    // Get resource usage from sandbox
+                    let final_usage = self.sandbox.get_resource_usage().unwrap_or(ResourceUsage {
+                        memory_bytes: 0,
+                        cpu_time_us: 0,
+                        user_time_us: 0,
+                        kernel_time_us: 0,
+                        io_bytes_read: 0,
+                        io_bytes_written: 0,
+                    });
+
+                    let completed = Utc::now();
+                    let wall_time = start_time.elapsed();
+
+                    let metrics = ExecutionMetrics {
+                        wall_time_ms: wall_time.as_millis() as u64,
+                        cpu_time_ms: final_usage.cpu_time_us / 1000,
+                        user_time_ms: final_usage.user_time_us / 1000,
+                        kernel_time_ms: final_usage.kernel_time_us / 1000,
+                        max_memory_bytes: final_usage.memory_bytes,
+                        io_bytes_read: final_usage.io_bytes_read,
+                        io_bytes_written: final_usage.io_bytes_written,
+                    };
+
+                    return Ok(ExecutionResponse::success(
+                        self.execution_id,
+                        exit_code,
+                        String::from_utf8_lossy(&stdout_buffer).to_string(),
+                        String::from_utf8_lossy(&stderr_buffer).to_string(),
+                        metrics,
+                        started,
+                        completed,
+                    ));
+                }
+                Ok(None) => {
+                    // Process is still running - read streaming data
+                    let (stdout_event, stderr_event) = streaming_io.read_available(Duration::from_millis(10));
+                    
+                    if let Some(io::IoEvent::Data(data)) = stdout_event {
+                        stdout_buffer.extend(data);
+                    }
+                    
+                    if let Some(io::IoEvent::Data(data)) = stderr_event {
+                        stderr_buffer.extend(data);
+                    }
+                }
+                Err(e) => {
+                    let _ = child.kill();
+                    return Err(ExecutionError::MonitoringError(format!(
+                        "Failed to check process status: {}",
+                        e
+                    ))
+                    .into());
+                }
+            }
+
+            // Check for OOM kill
+            if let Ok(true) = self.sandbox.check_oom_killed() {
+                let _ = child.kill();
+                let completed = Utc::now();
+                return Ok(ExecutionResponse::error(
+                    self.execution_id,
+                    crate::api::schema::ErrorResponse {
+                        code: "E4002".to_string(),
+                        message: "Process killed due to memory limit".to_string(),
+                        details: Some(serde_json::json!({
+                            "memory_limit": request.resources.memory_bytes
+                        })),
+                    },
+                    started,
+                    completed,
+                ));
+            }
+
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
 }
 
-// struct SandboxResourceProvider<'a> {
-//     sandbox: &'a Sandbox,
-// }
+struct SandboxResourceProvider<'a> {
+    sandbox: &'a Sandbox,
+}
+
+impl<'a> monitor::ResourceProvider for SandboxResourceProvider<'a> {
+    fn get_usage(&self) -> CapsuleResult<ResourceUsage> {
+        self.sandbox.get_resource_usage()
+    }
+
+    fn check_oom_killed(&self) -> CapsuleResult<bool> {
+        self.sandbox.check_oom_killed()
+    }
+}
 
 // impl<'a> SandboxResourceProvider<'a> {
 //     fn new(sandbox: &'a Sandbox) -> Self {
@@ -254,7 +413,7 @@ impl ResourceProvider for Sandbox {
 fn signal_name(signal: i32) -> &'static str {
     match signal {
         1 => "SIGHUP",
-        2 => "SIGINT", 
+        2 => "SIGINT",
         3 => "SIGQUIT",
         4 => "SIGILL",
         5 => "SIGTRAP",

@@ -1,6 +1,7 @@
 use crate::api::schema::{BindMount, IsolationConfig};
 use crate::error::{CapsuleResult, SandboxError};
 use nix::mount::{mount, umount2, MntFlags, MsFlags};
+use nix::sys::stat::mknod;
 use nix::unistd::{chdir, pivot_root};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -97,7 +98,7 @@ impl FilesystemManager {
         for (source, target) in &readonly_mounts {
             if Path::new(source).exists() {
                 let target_path = self.root_path.join(target);
-                self.bind_mount_readonly(source, &target_path)?;
+                self.bind_mount_readonly(Path::new(source), &target_path)?;
             }
         }
 
@@ -177,7 +178,7 @@ impl FilesystemManager {
             let device_path = dev_path.join(name);
             let device_number = nix::sys::stat::makedev(*major, *minor);
 
-            nix::unistd::mknod(
+            mknod(
                 &device_path,
                 nix::sys::stat::SFlag::S_IFCHR,
                 nix::sys::stat::Mode::S_IRUSR

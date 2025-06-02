@@ -1,4 +1,5 @@
 mod api;
+mod config;
 mod error;
 mod executor;
 mod sandbox;
@@ -6,6 +7,7 @@ mod sandbox;
 use crate::api::{
     validate_execution_request, BindMount, ExecutionRequest, IsolationConfig, ResourceLimits,
 };
+use crate::config::{load_config, create_default_config_file};
 use crate::error::CapsuleResult;
 use crate::executor::Executor;
 use clap::{ArgAction, Parser};
@@ -78,6 +80,18 @@ struct Cli {
     #[arg(long, short = 'v', action = ArgAction::SetTrue)]
     verbose: bool,
 
+    /// Configuration file path
+    #[arg(long, short = 'c', value_name = "PATH")]
+    config: Option<String>,
+
+    /// Execution profile to use from config
+    #[arg(long, short = 'p', value_name = "NAME")]
+    profile: Option<String>,
+
+    /// Create default configuration file
+    #[arg(long, value_name = "PATH")]
+    create_config: Option<String>,
+
     /// Command and arguments to execute
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     command: Vec<String>,
@@ -101,12 +115,31 @@ async fn main() {
 async fn run() -> CapsuleResult<i32> {
     let cli = Cli::parse();
 
+    // Handle config creation
+    if let Some(config_path) = &cli.create_config {
+        create_default_config_file(std::path::Path::new(config_path))?;
+        return Ok(0);
+    }
+
+    // Load configuration
+    let config = if let Some(config_path) = &cli.config {
+        crate::config::Config::load_from_file(std::path::Path::new(config_path))?
+    } else {
+        load_config()?
+    };
+
+    // Merge with profile if specified
+    let config = config.merge_with_profile(cli.profile.as_deref());
+
     if cli.verbose {
         eprintln!("capsule-run v{}", env!("CARGO_PKG_VERSION"));
         eprintln!(
             "Execution ID: {}",
             cli.execution_id.as_deref().unwrap_or("auto-generated")
         );
+        if let Some(profile) = &cli.profile {
+            eprintln!("Using profile: {}", profile);
+        }
     }
 
     // Parse execution ID or generate one
@@ -126,7 +159,7 @@ async fn run() -> CapsuleResult<i32> {
     let request = if cli.json {
         read_json_request()?
     } else {
-        create_request_from_cli(&cli)?
+        create_request_from_cli(&cli, &config)?
     };
 
     if cli.verbose {
@@ -169,12 +202,20 @@ fn read_json_request() -> CapsuleResult<ExecutionRequest> {
     Ok(request)
 }
 
-fn create_request_from_cli(cli: &Cli) -> CapsuleResult<ExecutionRequest> {
+fn create_request_from_cli(cli: &Cli, config: &crate::config::Config) -> CapsuleResult<ExecutionRequest> {
     if cli.command.is_empty() {
         return Err(crate::error::CapsuleError::Config(
             "No command specified. Use --json for JSON input or provide command arguments."
                 .to_string(),
         ));
+    }
+
+    // Validate command against security policy
+    if !config.validate_command(&cli.command) {
+        return Err(crate::error::CapsuleError::Security(format!(
+            "Command '{}' is not allowed by security policy",
+            cli.command[0]
+        )));
     }
 
     // Parse environment variables
@@ -225,10 +266,25 @@ fn create_request_from_cli(cli: &Cli) -> CapsuleResult<ExecutionRequest> {
         bind_mounts,
     };
 
+    // Use config defaults with CLI overrides
+    let timeout_ms = cli.timeout.unwrap_or(config.defaults.timeout_ms);
+    
+    // Merge environment variables from profile if available
+    let mut final_environment = environment;
+    if let Some(profile_name) = &cli.profile {
+        if let Some(profile) = config.get_profile(profile_name) {
+            if let Some(profile_env) = &profile.environment {
+                for (key, value) in profile_env {
+                    final_environment.entry(key.clone()).or_insert_with(|| value.clone());
+                }
+            }
+        }
+    }
+
     Ok(ExecutionRequest {
         command: cli.command.clone(),
-        environment,
-        timeout_ms: cli.timeout.unwrap_or(30_000), // 30 seconds default
+        environment: final_environment,
+        timeout_ms,
         resources,
         isolation,
     })
@@ -333,7 +389,7 @@ mod tests {
     fn test_cli_parsing() {
         use clap::Parser;
 
-        let cli = Cli::try_parse_from(&[
+        let cli = Cli::try_parse_from([
             "capsule-run",
             "--timeout",
             "5000",

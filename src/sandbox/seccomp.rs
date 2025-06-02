@@ -1,5 +1,5 @@
 use crate::error::{CapsuleResult, SandboxError};
-use libseccomp::{ScmpAction, ScmpFilterContext, ScmpSyscall};
+use libseccomp::{ScmpAction, ScmpArgCompare, ScmpCompareOp, ScmpFilterContext, ScmpSyscall};
 
 pub struct SeccompFilter {
     ctx: ScmpFilterContext,
@@ -7,7 +7,7 @@ pub struct SeccompFilter {
 
 impl SeccompFilter {
     pub fn new() -> CapsuleResult<Self> {
-        let ctx = ScmpFilterContext::new_filter(ScmpAction::Kill).map_err(|e| {
+        let ctx = ScmpFilterContext::new_filter(ScmpAction::KillProcess).map_err(|e| {
             SandboxError::SeccompSetup(format!("Failed to create seccomp context: {}", e))
         })?;
 
@@ -34,7 +34,6 @@ impl SeccompFilter {
             libc::SYS_stat,
             libc::SYS_fstat,
             libc::SYS_lstat,
-            libc::SYS_fstatat,
             libc::SYS_newfstatat,
             libc::SYS_readlink,
             libc::SYS_readlinkat,
@@ -149,8 +148,6 @@ impl SeccompFilter {
             // Filesystem info
             libc::SYS_statfs,
             libc::SYS_fstatfs,
-            libc::SYS_statvfs,
-            libc::SYS_fstatvfs,
             // fcntl operations
             libc::SYS_fcntl,
             // ioctl (restricted)
@@ -159,7 +156,7 @@ impl SeccompFilter {
 
         for &syscall in &allowed_syscalls {
             self.ctx
-                .add_rule(ScmpAction::Allow, ScmpSyscall::new(syscall as i32))
+                .add_rule(ScmpAction::Allow, ScmpSyscall::from_id(syscall as i32))
                 .map_err(|e| {
                     SandboxError::SeccompSetup(format!(
                         "Failed to add syscall rule for {}: {}",
@@ -175,17 +172,14 @@ impl SeccompFilter {
     }
 
     fn add_conditional_rules(&mut self) -> CapsuleResult<()> {
-        use libseccomp::{ScmpArgCompare, ScmpCompareOp};
-
         // Allow clone only for thread creation (CLONE_THREAD flag)
         self.ctx
             .add_rule_conditional(
                 ScmpAction::Allow,
-                ScmpSyscall::new(libc::SYS_clone as i32),
+                ScmpSyscall::from_id(libc::SYS_clone as i32),
                 &[ScmpArgCompare::new(
                     0,
-                    ScmpCompareOp::MaskedEqual,
-                    libc::CLONE_THREAD as u64,
+                    ScmpCompareOp::MaskedEqual(libc::CLONE_THREAD as u64),
                     libc::CLONE_THREAD as u64,
                 )],
             )
@@ -196,8 +190,8 @@ impl SeccompFilter {
         self.ctx
             .add_rule_conditional(
                 ScmpAction::Allow,
-                ScmpSyscall::new(libc::SYS_prctl as i32),
-                &[ScmpArgCompare::new(0, ScmpCompareOp::Equal, 15, 0)],
+                ScmpSyscall::from_id(libc::SYS_prctl as i32),
+                &[ScmpArgCompare::new(0, ScmpCompareOp::Equal, 15)],
             )
             .map_err(|e| {
                 SandboxError::SeccompSetup(format!("Failed to add prctl PR_SET_NAME rule: {}", e))
@@ -207,8 +201,8 @@ impl SeccompFilter {
         self.ctx
             .add_rule_conditional(
                 ScmpAction::Allow,
-                ScmpSyscall::new(libc::SYS_prctl as i32),
-                &[ScmpArgCompare::new(0, ScmpCompareOp::Equal, 16, 0)],
+                ScmpSyscall::from_id(libc::SYS_prctl as i32),
+                &[ScmpArgCompare::new(0, ScmpCompareOp::Equal, 16)],
             )
             .map_err(|e| {
                 SandboxError::SeccompSetup(format!("Failed to add prctl PR_GET_NAME rule: {}", e))
@@ -218,12 +212,11 @@ impl SeccompFilter {
         self.ctx
             .add_rule_conditional(
                 ScmpAction::Allow,
-                ScmpSyscall::new(libc::SYS_socket as i32),
+                ScmpSyscall::from_id(libc::SYS_socket as i32),
                 &[ScmpArgCompare::new(
                     0,
                     ScmpCompareOp::Equal,
                     libc::AF_UNIX as u64,
-                    0,
                 )],
             )
             .map_err(|e| {
@@ -263,7 +256,7 @@ impl SeccompFilter {
 
         for &syscall in &network_syscalls {
             self.ctx
-                .add_rule(ScmpAction::Allow, ScmpSyscall::new(syscall as i32))
+                .add_rule(ScmpAction::Allow, ScmpSyscall::from_id(syscall as i32))
                 .map_err(|e| {
                     SandboxError::SeccompSetup(format!(
                         "Failed to add network syscall rule for {}: {}",

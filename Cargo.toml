@@ -8,6 +8,10 @@ repository = "https://github.com/haasonsaas/capsule-run"
 keywords = ["sandbox", "security", "ai", "container", "isolation"]
 categories = ["command-line-utilities", "development-tools"]
 
+[features]
+default = []
+bench = []
+
 [dependencies]
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -25,6 +29,10 @@ tokio-util = { version = "0.7", features = ["io"] }
 
 # Time and monitoring
 chrono = { version = "0.4", features = ["serde"] }
+
+# Configuration
+toml = "0.8"
+tempfile = "3.0"
 
 # System interfaces
 libc = "0.2"

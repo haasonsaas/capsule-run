@@ -90,8 +90,10 @@ async fn test_memory_limit() {
         Err(_) => return,
     };
 
-    let mut resources = ResourceLimits::default();
-    resources.memory_bytes = 10 * 1024 * 1024; // 10MB limit
+    let resources = ResourceLimits {
+        memory_bytes: 10 * 1024 * 1024, // 10MB limit
+        ..Default::default()
+    };
 
     // Try to allocate more memory than the limit
     let request = ExecutionRequest {
@@ -133,8 +135,10 @@ async fn test_output_size_limit() {
         Err(_) => return,
     };
 
-    let mut resources = ResourceLimits::default();
-    resources.max_output_bytes = 100; // Very small output limit
+    let resources = ResourceLimits {
+        max_output_bytes: 100, // Very small output limit
+        ..Default::default()
+    };
 
     let request = ExecutionRequest {
         command: vec![
@@ -214,8 +218,10 @@ async fn test_working_directory() {
         Err(_) => return,
     };
 
-    let mut isolation = IsolationConfig::default();
-    isolation.working_directory = "/tmp".to_string();
+    let isolation = IsolationConfig {
+        working_directory: "/tmp".to_string(),
+        ..Default::default()
+    };
 
     let request = ExecutionRequest {
         command: vec!["pwd".to_string()],
@@ -250,8 +256,10 @@ async fn test_network_isolation() {
         Err(_) => return,
     };
 
-    let mut isolation = IsolationConfig::default();
-    isolation.network = false; // Network disabled
+    let isolation = IsolationConfig {
+        network: false, // Network disabled
+        ..Default::default()
+    };
 
     let request = ExecutionRequest {
         command: vec![
@@ -304,6 +312,8 @@ fn can_run_sandbox_tests() -> bool {
 }
 
 // Benchmark tests (optional - only run with --features bench)
+#[allow(unused)]
+#[allow(unexpected_cfgs)]
 #[cfg(feature = "bench")]
 mod bench_tests {
     use super::*;

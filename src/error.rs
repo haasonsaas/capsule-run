@@ -53,9 +53,11 @@ pub enum SandboxError {
 #[derive(Error, Debug)]
 pub enum ExecutionError {
     #[error("Command timed out after {timeout_ms}ms")]
+    #[allow(dead_code)]
     Timeout { timeout_ms: u64 },
 
     #[error("Command killed by signal {signal}")]
+    #[allow(dead_code)]
     Signal { signal: i32 },
 
     #[error("Process spawning failed: {0}")]
