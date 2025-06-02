@@ -198,12 +198,12 @@ impl SeccompFilter {
         }
 
         // Add conditional rules for more dangerous syscalls
-        self.add_conditional_rules(&mut ctx)?;
+        Self::add_conditional_rules(&mut ctx)?;
 
         Ok(())
     }
 
-    fn add_conditional_rules(&mut self, ctx: &mut std::sync::MutexGuard<ThreadSafeFilterContext>) -> CapsuleResult<()> {
+    fn add_conditional_rules(ctx: &mut std::sync::MutexGuard<ThreadSafeFilterContext>) -> CapsuleResult<()> {
         // Allow clone only for thread creation (CLONE_THREAD flag)
         ctx.inner
             .add_rule_conditional(
