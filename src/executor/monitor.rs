@@ -313,19 +313,19 @@ impl TimeoutMonitor {
         if self.timed_out.get() {
             return true;
         }
-        
+
         // Check if timeout message was received
         if self.receiver.try_recv().is_ok() {
             self.timed_out.set(true);
             return true;
         }
-        
+
         // Also check elapsed time as a fallback
         if self.start_time.elapsed() >= self.timeout_duration {
             self.timed_out.set(true);
             return true;
         }
-        
+
         false
     }
 
