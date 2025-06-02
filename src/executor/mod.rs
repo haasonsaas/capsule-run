@@ -1,4 +1,5 @@
 pub mod io;
+pub mod io_stats;
 pub mod monitor;
 
 use crate::api::schema::{ExecutionMetrics, ExecutionRequest, ExecutionResponse};
@@ -13,7 +14,7 @@ pub use io::IoCapture;
 
 pub struct Executor {
     execution_id: Uuid,
-    sandbox: Sandbox,
+    sandbox: std::sync::Arc<Sandbox>,
 }
 
 // pub struct ExecutionResult {
@@ -23,7 +24,7 @@ pub struct Executor {
 
 impl Executor {
     pub fn new(execution_id: Uuid) -> CapsuleResult<Self> {
-        let sandbox = Sandbox::new(execution_id)?;
+        let sandbox = std::sync::Arc::new(Sandbox::new(execution_id)?);
 
         Ok(Self {
             execution_id,
@@ -34,8 +35,10 @@ impl Executor {
     pub async fn execute(mut self, request: ExecutionRequest) -> CapsuleResult<ExecutionResponse> {
         let started = Utc::now();
 
-        // Setup sandbox
-        match self.sandbox.setup(&request.resources, &request.isolation) {
+        // Setup sandbox  
+        match std::sync::Arc::get_mut(&mut self.sandbox)
+            .ok_or_else(|| crate::error::CapsuleError::Config("Sandbox reference error".to_string()))?
+            .setup(&request.resources, &request.isolation) {
             Ok(_) => {}
             Err(e) => {
                 let completed = Utc::now();
@@ -119,11 +122,23 @@ impl Executor {
         
         let io_capture = IoCapture::new(stdout, stderr, request.resources.max_output_bytes);
 
+        // Setup monitoring for the process
+        let process_id = child.id();
+        let sandbox_provider = std::sync::Arc::clone(&self.sandbox);
+        let resource_monitor = monitor::ResourceMonitor::new(
+            sandbox_provider,
+            std::time::Duration::from_millis(50), // Monitor every 50ms
+        );
+        
+        // Setup I/O monitoring
+        let io_monitor = io_stats::IoMonitor::new(process_id);
+
         // Enhanced execution loop with better monitoring
         loop {
             // Check timeout
             if start_time.elapsed() >= timeout_duration {
                 let _ = child.kill();
+                let _ = resource_monitor.stop_and_get_result(); // Stop monitoring
                 let completed = Utc::now();
                 return Ok(ExecutionResponse::timeout(
                     self.execution_id,
@@ -166,15 +181,21 @@ impl Executor {
                     // Collect I/O
                     let (stdout, stderr) = io_capture.wait_for_completion()?;
 
-                    // Get final resource usage from sandbox
-                    let final_usage = self.sandbox.get_resource_usage().unwrap_or(ResourceUsage {
-                        memory_bytes: 0,
-                        cpu_time_us: 0,
-                        user_time_us: 0,
-                        kernel_time_us: 0,
-                        io_bytes_read: 0,
-                        io_bytes_written: 0,
-                    });
+                    // Stop monitoring and get comprehensive results
+                    let monitoring_result = resource_monitor.stop_and_get_result()?;
+                    
+                    // Get final I/O statistics
+                    let io_stats = io_monitor.get_total_stats().unwrap_or_default();
+                    
+                    // Get final resource usage from monitoring
+                    let final_usage = ResourceUsage {
+                        memory_bytes: monitoring_result.peak_memory,
+                        cpu_time_us: monitoring_result.total_cpu_time,
+                        user_time_us: monitoring_result.total_cpu_time / 2, // Approximation
+                        kernel_time_us: monitoring_result.total_cpu_time / 2, // Approximation
+                        io_bytes_read: io_stats.read_bytes,
+                        io_bytes_written: io_stats.write_bytes,
+                    };
 
                     let completed = Utc::now();
                     let wall_time = start_time.elapsed();
@@ -216,6 +237,7 @@ impl Executor {
             // Check for OOM kill
             if let Ok(true) = self.sandbox.check_oom_killed() {
                 let _ = child.kill();
+                let _ = resource_monitor.stop_and_get_result(); // Stop monitoring
                 let completed = Utc::now();
                 return Ok(ExecutionResponse::error(
                     self.execution_id,
@@ -377,25 +399,17 @@ impl Executor {
     }
 }
 
-struct SandboxResourceProvider<'a> {
-    sandbox: &'a Sandbox,
-}
-
-impl<'a> monitor::ResourceProvider for SandboxResourceProvider<'a> {
+// Implement ResourceProvider directly for Arc<Sandbox> to avoid lifetime issues
+impl monitor::ResourceProvider for std::sync::Arc<Sandbox> {
     fn get_usage(&self) -> CapsuleResult<ResourceUsage> {
-        self.sandbox.get_resource_usage()
+        (**self).get_resource_usage()
     }
 
     fn check_oom_killed(&self) -> CapsuleResult<bool> {
-        self.sandbox.check_oom_killed()
+        (**self).check_oom_killed()
     }
 }
 
-// impl<'a> SandboxResourceProvider<'a> {
-//     fn new(sandbox: &'a Sandbox) -> Self {
-//         Self { sandbox }
-//     }
-// }
 
 use monitor::ResourceProvider;
 

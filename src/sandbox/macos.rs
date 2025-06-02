@@ -188,15 +188,17 @@ impl MacOSSandbox {
     }
 
     pub fn prepare_command(&self, cmd: &mut Command) -> CapsuleResult<()> {
-        // Apply resource limits using setrlimit when the process starts
+        use std::os::unix::process::CommandExt;
+
+        // Apply resource limits using pre_exec hook
         if let Some(limits) = &self.resource_limits {
-            // Set environment variables that can be checked by a wrapper script
-            if limits.memory_bytes > 0 {
-                cmd.env("CAPSULE_MEMORY_LIMIT", limits.memory_bytes.to_string());
-            }
-            // Note: Using max_pids as a proxy for process limits
-            if limits.max_pids > 0 {
-                cmd.env("CAPSULE_MAX_PIDS", limits.max_pids.to_string());
+            let limits_clone = limits.clone();
+            let process_limits = self.process_limits.clone();
+            
+            unsafe {
+                cmd.pre_exec(move || {
+                    Self::apply_limits_in_child(&limits_clone, &process_limits)
+                });
             }
         }
 
@@ -210,6 +212,49 @@ impl MacOSSandbox {
         Ok(())
     }
 
+    fn apply_limits_in_child(
+        limits: &ResourceLimits, 
+        process_limits: &ProcessLimits
+    ) -> Result<(), std::io::Error> {
+        unsafe {
+            // Set memory limit (RLIMIT_AS - virtual memory)
+            if limits.memory_bytes > 0 {
+                let limit = libc::rlimit {
+                    rlim_cur: limits.memory_bytes,
+                    rlim_max: limits.memory_bytes,
+                };
+                if libc::setrlimit(libc::RLIMIT_AS, &limit) != 0 {
+                    eprintln!("Warning: Failed to set memory limit");
+                    // Don't fail the process, just warn
+                }
+            }
+
+            // Set file descriptor limit (RLIMIT_NOFILE) 
+            if let Some(fd_limit) = process_limits.max_file_descriptors {
+                let limit = libc::rlimit {
+                    rlim_cur: fd_limit as u64,
+                    rlim_max: fd_limit as u64,
+                };
+                if libc::setrlimit(libc::RLIMIT_NOFILE, &limit) != 0 {
+                    eprintln!("Warning: Failed to set file descriptor limit");
+                }
+            }
+
+            // Set process limit (RLIMIT_NPROC)
+            if let Some(proc_limit) = process_limits.max_processes {
+                let limit = libc::rlimit {
+                    rlim_cur: proc_limit as u64,
+                    rlim_max: proc_limit as u64,
+                };
+                if libc::setrlimit(libc::RLIMIT_NPROC, &limit) != 0 {
+                    eprintln!("Warning: Failed to set process limit");
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn cleanup(&self) -> CapsuleResult<()> {
         // Clean up temporary sandbox profile
         let profile_path = format!("/tmp/capsule-{}.sb", self.execution_id);
@@ -218,68 +263,6 @@ impl MacOSSandbox {
         Ok(())
     }
 
-    /// Apply process limits using setrlimit - this should be called from within the child process
-    pub fn apply_process_limits(&self) -> CapsuleResult<()> {
-        unsafe {
-            // Set memory limit (RLIMIT_AS - virtual memory)
-            if let Some(memory_limit) = self.process_limits.max_memory_bytes {
-                let limit = libc::rlimit {
-                    rlim_cur: memory_limit,
-                    rlim_max: memory_limit,
-                };
-                if libc::setrlimit(libc::RLIMIT_AS, &limit) != 0 {
-                    return Err(SandboxError::CgroupSetup(
-                        "Failed to set memory limit".to_string(),
-                    )
-                    .into());
-                }
-            }
-
-            // Set CPU time limit (RLIMIT_CPU)
-            if let Some(cpu_time_limit) = self.process_limits.max_cpu_time_seconds {
-                let limit = libc::rlimit {
-                    rlim_cur: cpu_time_limit,
-                    rlim_max: cpu_time_limit,
-                };
-                if libc::setrlimit(libc::RLIMIT_CPU, &limit) != 0 {
-                    return Err(SandboxError::CgroupSetup(
-                        "Failed to set CPU time limit".to_string(),
-                    )
-                    .into());
-                }
-            }
-
-            // Set file descriptor limit (RLIMIT_NOFILE)
-            if let Some(fd_limit) = self.process_limits.max_file_descriptors {
-                let limit = libc::rlimit {
-                    rlim_cur: fd_limit as u64,
-                    rlim_max: fd_limit as u64,
-                };
-                if libc::setrlimit(libc::RLIMIT_NOFILE, &limit) != 0 {
-                    return Err(SandboxError::CgroupSetup(
-                        "Failed to set file descriptor limit".to_string(),
-                    )
-                    .into());
-                }
-            }
-
-            // Set process limit (RLIMIT_NPROC)
-            if let Some(proc_limit) = self.process_limits.max_processes {
-                let limit = libc::rlimit {
-                    rlim_cur: proc_limit as u64,
-                    rlim_max: proc_limit as u64,
-                };
-                if libc::setrlimit(libc::RLIMIT_NPROC, &limit) != 0 {
-                    return Err(SandboxError::CgroupSetup(
-                        "Failed to set process limit".to_string(),
-                    )
-                    .into());
-                }
-            }
-        }
-
-        Ok(())
-    }
 }
 
 impl Drop for MacOSSandbox {
