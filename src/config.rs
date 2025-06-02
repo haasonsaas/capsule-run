@@ -179,7 +179,6 @@ impl Config {
         // If no allowed list is specified, allow by default (after blocked check)
         true
     }
-
 }
 
 pub fn load_config() -> CapsuleResult<Config> {

@@ -117,12 +117,9 @@ impl Sandbox {
 
         #[cfg(feature = "seccomp")]
         if isolation.network {
-            // Clone and replace the seccomp filter with network access
-            let new_filter = SeccompFilter::new()?;
-            // Setup basic allowlist first
-            let mut new_filter = new_filter;
+            // Replace the existing filter with one that has network access
+            let mut new_filter = SeccompFilter::new()?;
             new_filter.setup_allowlist()?;
-            // Add network access
             self.seccomp_filter = new_filter.with_network_access()?;
         }
 
