@@ -4,7 +4,7 @@ pub mod cgroups;
 pub mod filesystem;
 #[cfg(target_os = "linux")]
 pub mod namespaces;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
 pub mod seccomp;
 
 #[cfg(target_os = "macos")]
@@ -25,7 +25,7 @@ pub use cgroups::{CgroupManager, ResourceUsage};
 pub use filesystem::FilesystemManager;
 #[cfg(target_os = "linux")]
 pub use namespaces::NamespaceManager;
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", feature = "seccomp"))]
 pub use seccomp::SeccompFilter;
 
 #[cfg(target_os = "macos")]
@@ -62,6 +62,7 @@ pub struct Sandbox {
     pub namespace_manager: NamespaceManager,
     pub cgroup_manager: CgroupManager,
     pub filesystem_manager: FilesystemManager,
+    #[cfg(feature = "seccomp")]
     pub seccomp_filter: SeccompFilter,
 }
 
@@ -83,6 +84,7 @@ impl Sandbox {
         let namespace_manager = NamespaceManager::new();
         let cgroup_manager = CgroupManager::new(execution_id)?;
         let filesystem_manager = FilesystemManager::new(execution_id)?;
+        #[cfg(feature = "seccomp")]
         let seccomp_filter = SeccompFilter::new()?;
 
         Ok(Self {
@@ -90,6 +92,7 @@ impl Sandbox {
             namespace_manager,
             cgroup_manager,
             filesystem_manager,
+            #[cfg(feature = "seccomp")]
             seccomp_filter,
         })
     }
@@ -107,8 +110,10 @@ impl Sandbox {
         self.filesystem_manager.setup_isolation(isolation)?;
 
         // Setup seccomp filter
+        #[cfg(feature = "seccomp")]
         self.seccomp_filter.setup_allowlist()?;
 
+        #[cfg(feature = "seccomp")]
         if isolation.network {
             // Clone and replace the seccomp filter with network access
             let new_filter = SeccompFilter::new()?;
@@ -126,6 +131,7 @@ impl Sandbox {
         self.drop_capabilities()?;
 
         // Apply seccomp filter (must be last)
+        #[cfg(feature = "seccomp")]
         self.seccomp_filter.apply()?;
 
         Ok(())
