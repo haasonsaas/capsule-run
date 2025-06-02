@@ -184,9 +184,73 @@ Options:
 | E5xxx | Security | Security violations |
 | E6xxx | System | System-level errors |
 
+## Development
+
+### Local Testing with act
+
+You can test GitHub Actions workflows locally using [nektos/act](https://github.com/nektos/act):
+
+```bash
+# Install act
+brew install act  # macOS
+# or
+curl https://raw.githubusercontent.com/nektos/act/master/install.sh | sudo bash  # Linux
+
+# Setup development environment
+make dev-setup
+
+# Quick validation before commit
+make pre-commit
+
+# Test CI locally
+make test-local-quick      # Fast validation
+make test-local-basic      # Basic CI tests  
+make test-local-comprehensive  # Full test suite
+
+# Test specific features
+./scripts/test-ci-locally.sh feature-matrix  # Test with/without seccomp
+./scripts/test-ci-locally.sh security        # Security validation
+```
+
+### Available Make Commands
+
+```bash
+make help                    # Show all available commands
+make check                   # Check compilation
+make test                    # Run tests
+make fmt                     # Format code
+make clippy                  # Run lints
+make pre-commit             # Pre-commit validation
+make test-local-quick       # Quick CI test
+make release-check          # Full release validation
+```
+
+### Testing Different Configurations
+
+```bash
+# Test with seccomp (Linux)
+cargo test --features seccomp
+
+# Test without seccomp (macOS/CI)
+cargo test --no-default-features
+
+# Cross-compilation
+cargo build --target aarch64-unknown-linux-gnu
+```
+
+See [LOCAL_TESTING.md](LOCAL_TESTING.md) for comprehensive local testing guide.
+
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! Please:
+
+1. **Test locally first**: `make pre-commit && make test-local-basic`
+2. **Follow the workflow**: Fork → Branch → Test → Pull Request
+3. **Check all platforms**: Test both with and without seccomp features
+4. **Update documentation**: Add examples for new features
+5. **Security focus**: Consider security implications of changes
+
+For major changes, please open an issue first to discuss the approach.
 
 ## License
 
