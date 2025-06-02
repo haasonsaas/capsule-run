@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 pub struct CgroupManager {
     cgroup_path: PathBuf,
+    #[allow(dead_code)] // Used for future tracking and debugging features
     execution_id: Uuid,
 }
 

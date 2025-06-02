@@ -271,6 +271,7 @@ impl Executor {
         }
     }
 
+    #[allow(clippy::too_many_arguments)] // Complex execution method requires multiple parameters
     async fn execute_with_streaming_io(
         &self,
         mut child: std::process::Child,

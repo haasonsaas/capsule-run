@@ -48,8 +48,14 @@ libseccomp = { version = "0.3", optional = true }
 panic = "abort"
 codegen-units = 1
 lto = true
-opt-level = "z"
+opt-level = "s"  # Use "s" instead of "z" for better compatibility
 strip = true
+
+# Special profile for musl builds with less aggressive optimizations
+[profile.release-musl]
+inherits = "release"
+lto = "thin"  # Use thin LTO instead of fat LTO for musl
+opt-level = 2  # Use standard optimization level
 
 [lib]
 name = "capsule_run"

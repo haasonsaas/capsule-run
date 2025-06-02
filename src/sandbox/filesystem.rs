@@ -10,6 +10,7 @@ use uuid::Uuid;
 pub struct FilesystemManager {
     root_path: PathBuf,
     old_root_path: PathBuf,
+    #[allow(dead_code)] // Used for future tracking and debugging features
     execution_id: Uuid,
 }
 

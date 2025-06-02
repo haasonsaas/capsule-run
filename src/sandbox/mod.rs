@@ -58,6 +58,7 @@ pub struct ResourceUsage {
 
 #[cfg(target_os = "linux")]
 pub struct Sandbox {
+    #[allow(dead_code)] // Used for future tracking and debugging features
     pub execution_id: Uuid,
     pub namespace_manager: NamespaceManager,
     pub cgroup_manager: CgroupManager,
@@ -68,6 +69,7 @@ pub struct Sandbox {
 
 #[cfg(target_os = "macos")]
 pub struct Sandbox {
+    #[allow(dead_code)] // Used for future tracking and debugging features
     pub execution_id: Uuid,
     pub macos_sandbox: MacOSSandbox,
 }
