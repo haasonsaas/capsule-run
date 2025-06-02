@@ -64,7 +64,6 @@ pub struct Sandbox {
 }
 
 #[cfg(target_os = "linux")]
-#[allow(dead_code)] // Methods are part of API design but not yet used
 impl Sandbox {
     pub fn new(execution_id: Uuid) -> CapsuleResult<Self> {
         let namespace_manager = NamespaceManager::new();
@@ -147,7 +146,6 @@ impl Sandbox {
 }
 
 #[cfg(not(target_os = "linux"))]
-#[allow(dead_code)] // Methods are part of API design but not yet used
 impl Sandbox {
     pub fn new(execution_id: uuid::Uuid) -> crate::error::CapsuleResult<Self> {
         Ok(Self { execution_id })

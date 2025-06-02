@@ -51,7 +51,6 @@ pub enum SandboxError {
 }
 
 #[derive(Error, Debug)]
-#[allow(dead_code)] // Some variants are part of API design but not yet used
 pub enum ExecutionError {
     #[error("Command timed out after {timeout_ms}ms")]
     Timeout { timeout_ms: u64 },

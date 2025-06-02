@@ -24,7 +24,6 @@ pub struct MonitoringResult {
     pub oom_killed: bool,
 }
 
-#[allow(dead_code)] // Part of API design but not yet used
 pub trait ResourceProvider: Send + Sync {
     fn get_usage(&self) -> CapsuleResult<ResourceUsage>;
     fn check_oom_killed(&self) -> CapsuleResult<bool>;

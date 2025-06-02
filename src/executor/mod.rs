@@ -107,7 +107,10 @@ impl Executor {
         let stderr = child.stderr.take();
         let io_capture = IoCapture::new(stdout, stderr, request.resources.max_output_bytes);
 
-        // Simple execution loop
+        // Setup monitoring for the process
+        let _process_id = child.id();
+        
+        // Enhanced execution loop with better monitoring
         loop {
             // Check timeout
             if start_time.elapsed() >= timeout_duration {
@@ -124,13 +127,37 @@ impl Executor {
             // Check if process has exited
             match child.try_wait() {
                 Ok(Some(status)) => {
-                    // Process has exited
+                    // Process has exited - determine how it exited
                     let exit_code = status.code().unwrap_or(-1);
+                    
+                    // Check if process was killed by signal
+                    #[cfg(unix)]
+                    {
+                        use std::os::unix::process::ExitStatusExt;
+                        if let Some(signal) = status.signal() {
+                            // Process was killed by signal - create error response
+                            let completed = Utc::now();
+                            let error = crate::api::schema::ErrorResponse {
+                                code: "E3003".to_string(),
+                                message: format!("Process killed by signal {}", signal),
+                                details: Some(serde_json::json!({
+                                    "signal": signal,
+                                    "signal_name": signal_name(signal)
+                                })),
+                            };
+                            return Ok(ExecutionResponse::error(
+                                self.execution_id,
+                                error,
+                                started,
+                                completed,
+                            ));
+                        }
+                    }
 
                     // Collect I/O
                     let (stdout, stderr) = io_capture.wait_for_completion()?;
 
-                    // Get basic resource usage
+                    // Get final resource usage from cgroups
                     let final_usage = self.sandbox.get_resource_usage().unwrap_or(ResourceUsage {
                         memory_bytes: 0,
                         cpu_time_us: 0,
@@ -143,6 +170,7 @@ impl Executor {
                     let completed = Utc::now();
                     let wall_time = start_time.elapsed();
 
+                    // Create comprehensive execution metrics
                     let metrics = ExecutionMetrics {
                         wall_time_ms: wall_time.as_millis() as u64,
                         cpu_time_ms: final_usage.cpu_time_us / 1000,
@@ -210,15 +238,55 @@ impl Executor {
 //     }
 // }
 
-// impl<'a> ResourceProvider for SandboxResourceProvider<'a> {
-//     fn get_usage(&self) -> CapsuleResult<ResourceUsage> {
-//         self.sandbox.get_resource_usage()
-//     }
+use monitor::ResourceProvider;
 
-//     fn check_oom_killed(&self) -> CapsuleResult<bool> {
-//         self.sandbox.check_oom_killed()
-//     }
-// }
+impl ResourceProvider for Sandbox {
+    fn get_usage(&self) -> CapsuleResult<ResourceUsage> {
+        self.get_resource_usage()
+    }
+
+    fn check_oom_killed(&self) -> CapsuleResult<bool> {
+        self.check_oom_killed()
+    }
+}
+
+#[cfg(unix)]
+fn signal_name(signal: i32) -> &'static str {
+    match signal {
+        1 => "SIGHUP",
+        2 => "SIGINT", 
+        3 => "SIGQUIT",
+        4 => "SIGILL",
+        5 => "SIGTRAP",
+        6 => "SIGABRT",
+        7 => "SIGBUS",
+        8 => "SIGFPE",
+        9 => "SIGKILL",
+        10 => "SIGUSR1",
+        11 => "SIGSEGV",
+        12 => "SIGUSR2",
+        13 => "SIGPIPE",
+        14 => "SIGALRM",
+        15 => "SIGTERM",
+        16 => "SIGSTKFLT",
+        17 => "SIGCHLD",
+        18 => "SIGCONT",
+        19 => "SIGSTOP",
+        20 => "SIGTSTP",
+        21 => "SIGTTIN",
+        22 => "SIGTTOU",
+        23 => "SIGURG",
+        24 => "SIGXCPU",
+        25 => "SIGXFSZ",
+        26 => "SIGVTALRM",
+        27 => "SIGPROF",
+        28 => "SIGWINCH",
+        29 => "SIGIO",
+        30 => "SIGPWR",
+        31 => "SIGSYS",
+        _ => "UNKNOWN",
+    }
+}
 
 #[cfg(test)]
 mod tests {
