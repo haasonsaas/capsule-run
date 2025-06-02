@@ -143,7 +143,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libseccomp-dev
           if [[ "${{ matrix.target }}" == "aarch64-unknown-linux-gnu" ]]; then
-            sudo apt-get install -y gcc-aarch64-linux-gnu
+            sudo dpkg --add-architecture arm64
+            sudo apt-get update
+            sudo apt-get install -y gcc-aarch64-linux-gnu libseccomp-dev:arm64
           fi
           if [[ "${{ matrix.target }}" == "x86_64-unknown-linux-musl" ]]; then
             sudo apt-get install -y musl-tools
@@ -155,6 +157,14 @@ jobs:
             if [[ "${{ matrix.target }}" == "x86_64-unknown-linux-musl" ]]; then
               # Build musl target without seccomp for better static linking compatibility
               cargo build --release --target ${{ matrix.target }} --no-default-features
+            elif [[ "${{ matrix.target }}" == "aarch64-unknown-linux-gnu" ]]; then
+              # Configure cross-compilation for ARM64
+              export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+              export CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc
+              export AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar
+              export PKG_CONFIG_ALLOW_CROSS=1
+              export PKG_CONFIG_PATH=/usr/lib/aarch64-linux-gnu/pkgconfig
+              cargo build --release --target ${{ matrix.target }}
             else
               cargo build --release --target ${{ matrix.target }}
             fi
