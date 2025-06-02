@@ -255,19 +255,6 @@ impl CgroupManager {
         Ok((bytes_read, bytes_written))
     }
 
-    #[allow(dead_code)] // Used for future event monitoring
-    pub fn get_events_fd(&self) -> CapsuleResult<File> {
-        let events_path = self.cgroup_path.join("memory.events");
-        File::open(&events_path).map_err(|e| {
-            SandboxError::CgroupSetup(format!(
-                "Failed to open events file {}: {}",
-                events_path.display(),
-                e
-            ))
-            .into()
-        })
-    }
-
     pub fn check_oom_killed(&self) -> CapsuleResult<bool> {
         let content = self.read_cgroup_file("memory.events")?;
 

@@ -180,10 +180,6 @@ impl Config {
         true
     }
 
-    #[allow(dead_code)] // Used for future monitoring features
-    pub fn get_monitoring_interval(&self) -> std::time::Duration {
-        std::time::Duration::from_millis(self.monitoring.interval_ms)
-    }
 }
 
 pub fn load_config() -> CapsuleResult<Config> {
