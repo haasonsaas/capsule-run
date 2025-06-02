@@ -8,7 +8,7 @@ use std::time::Duration;
 pub struct IoCapture {
     stdout_handle: Option<thread::JoinHandle<CapsuleResult<Vec<u8>>>>,
     stderr_handle: Option<thread::JoinHandle<CapsuleResult<Vec<u8>>>>,
-    max_output_size: usize,
+    _max_output_size: usize,
 }
 
 impl IoCapture {
@@ -30,7 +30,7 @@ impl IoCapture {
         Self {
             stdout_handle,
             stderr_handle,
-            max_output_size,
+            _max_output_size: max_output_size,
         }
     }
 
@@ -89,6 +89,7 @@ impl IoCapture {
     }
 }
 
+#[allow(dead_code)] // Part of API design but not yet used
 pub struct StreamingIoCapture {
     stdout_receiver: Option<mpsc::Receiver<IoEvent>>,
     stderr_receiver: Option<mpsc::Receiver<IoEvent>>,
@@ -97,12 +98,14 @@ pub struct StreamingIoCapture {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Part of API design but not yet used
 pub enum IoEvent {
     Data(Vec<u8>),
     Error(String),
     Eof,
 }
 
+#[allow(dead_code)] // Part of API design but not yet used
 impl StreamingIoCapture {
     pub fn new(
         stdout: Option<ChildStdout>,

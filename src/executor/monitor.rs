@@ -8,6 +8,7 @@ use std::sync::{
 use std::thread;
 use std::time::{Duration, Instant};
 
+#[allow(dead_code)] // Part of API design but not yet used
 pub struct ResourceMonitor {
     stop_flag: Arc<AtomicBool>,
     monitor_handle: Option<thread::JoinHandle<CapsuleResult<MonitoringResult>>>,
@@ -15,6 +16,7 @@ pub struct ResourceMonitor {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Part of API design but not yet used
 pub struct MonitoringResult {
     pub peak_memory: u64,
     pub total_cpu_time: u64,
@@ -22,11 +24,13 @@ pub struct MonitoringResult {
     pub oom_killed: bool,
 }
 
+#[allow(dead_code)] // Part of API design but not yet used
 pub trait ResourceProvider: Send + Sync {
     fn get_usage(&self) -> CapsuleResult<ResourceUsage>;
     fn check_oom_killed(&self) -> CapsuleResult<bool>;
 }
 
+#[allow(dead_code)] // Part of API design but not yet used
 impl ResourceMonitor {
     pub fn new<P: ResourceProvider + 'static>(
         provider: Arc<P>,
@@ -146,6 +150,7 @@ impl ResourceMonitor {
     }
 }
 
+#[allow(dead_code)] // Part of API design but not yet used
 pub struct ProcessMonitor {
     pid: u32,
     stop_flag: Arc<AtomicBool>,
@@ -153,6 +158,7 @@ pub struct ProcessMonitor {
 }
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Part of API design but not yet used
 pub enum ProcessStatus {
     Running,
     Exited(i32),
@@ -161,6 +167,7 @@ pub enum ProcessStatus {
     Unknown,
 }
 
+#[allow(dead_code)] // Part of API design but not yet used
 impl ProcessMonitor {
     pub fn new(pid: u32) -> Self {
         let stop_flag = Arc::new(AtomicBool::new(false));
@@ -269,6 +276,7 @@ impl ProcessMonitor {
     }
 }
 
+#[allow(dead_code)] // Part of API design but not yet used
 pub struct TimeoutMonitor {
     timeout_duration: Duration,
     start_time: Instant,
@@ -276,6 +284,7 @@ pub struct TimeoutMonitor {
     _handle: thread::JoinHandle<()>,
 }
 
+#[allow(dead_code)] // Part of API design but not yet used
 impl TimeoutMonitor {
     pub fn new(timeout_duration: Duration) -> (Self, mpsc::Sender<()>) {
         let (sender, receiver) = mpsc::channel();

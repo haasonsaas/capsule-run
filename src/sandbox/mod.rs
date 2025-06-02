@@ -25,12 +25,16 @@ pub use seccomp::SeccompFilter;
 
 // Stub implementations for non-Linux platforms
 #[cfg(not(target_os = "linux"))]
+#[allow(dead_code)] // Stub for non-Linux platforms
 pub struct NamespaceManager;
 #[cfg(not(target_os = "linux"))]
+#[allow(dead_code)] // Stub for non-Linux platforms
 pub struct CgroupManager;
 #[cfg(not(target_os = "linux"))]
+#[allow(dead_code)] // Stub for non-Linux platforms
 pub struct SeccompFilter;
 #[cfg(not(target_os = "linux"))]
+#[allow(dead_code)] // Stub for non-Linux platforms
 pub struct FilesystemManager;
 
 #[cfg(not(target_os = "linux"))]
@@ -54,11 +58,13 @@ pub struct Sandbox {
 }
 
 #[cfg(not(target_os = "linux"))]
+#[allow(dead_code)] // Fields are part of API design but not yet used
 pub struct Sandbox {
     pub execution_id: uuid::Uuid,
 }
 
 #[cfg(target_os = "linux")]
+#[allow(dead_code)] // Methods are part of API design but not yet used
 impl Sandbox {
     pub fn new(execution_id: Uuid) -> CapsuleResult<Self> {
         let namespace_manager = NamespaceManager::new();
@@ -141,6 +147,7 @@ impl Sandbox {
 }
 
 #[cfg(not(target_os = "linux"))]
+#[allow(dead_code)] // Methods are part of API design but not yet used
 impl Sandbox {
     pub fn new(execution_id: uuid::Uuid) -> crate::error::CapsuleResult<Self> {
         Ok(Self { execution_id })

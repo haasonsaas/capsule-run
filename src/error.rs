@@ -1,6 +1,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
+#[allow(dead_code)] // Some variants are part of API design but not yet used
 pub enum CapsuleError {
     #[error("Configuration error: {0}")]
     Config(String),
@@ -28,6 +29,7 @@ pub enum CapsuleError {
 }
 
 #[derive(Error, Debug)]
+#[allow(dead_code)] // Some variants are part of API design but not yet used
 pub enum SandboxError {
     #[error("Failed to create namespace: {namespace}")]
     NamespaceCreation { namespace: String },
@@ -49,6 +51,7 @@ pub enum SandboxError {
 }
 
 #[derive(Error, Debug)]
+#[allow(dead_code)] // Some variants are part of API design but not yet used
 pub enum ExecutionError {
     #[error("Command timed out after {timeout_ms}ms")]
     Timeout { timeout_ms: u64 },
@@ -72,6 +75,7 @@ pub enum ExecutionError {
 pub type CapsuleResult<T> = Result<T, CapsuleError>;
 
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // Fields are part of API design but not yet used
 pub struct ErrorCode {
     pub code: &'static str,
     pub message: String,

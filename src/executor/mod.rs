@@ -2,28 +2,24 @@ pub mod io;
 pub mod monitor;
 
 use crate::api::schema::{ExecutionMetrics, ExecutionRequest, ExecutionResponse};
-use crate::error::{CapsuleError, CapsuleResult, ErrorCode, ExecutionError};
+use crate::error::{CapsuleResult, ErrorCode, ExecutionError};
 use crate::sandbox::{ResourceUsage, Sandbox};
 use chrono::{DateTime, Utc};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub use io::{IoCapture, IoEvent, StreamingIoCapture};
-pub use monitor::{
-    MonitoringResult, ProcessMonitor, ProcessStatus, ResourceMonitor, ResourceProvider,
-    TimeoutMonitor,
-};
+pub use io::IoCapture;
 
 pub struct Executor {
     execution_id: Uuid,
     sandbox: Sandbox,
 }
 
-pub struct ExecutionResult {
-    pub response: ExecutionResponse,
-    pub metrics: ExecutionMetrics,
-}
+// pub struct ExecutionResult {
+//     pub response: ExecutionResponse,
+//     pub metrics: ExecutionMetrics,
+// }
 
 impl Executor {
     pub fn new(execution_id: Uuid) -> CapsuleResult<Self> {
@@ -135,17 +131,14 @@ impl Executor {
                     let (stdout, stderr) = io_capture.wait_for_completion()?;
 
                     // Get basic resource usage
-                    let final_usage =
-                        self.sandbox
-                            .get_resource_usage()
-                            .unwrap_or_else(|_| ResourceUsage {
-                                memory_bytes: 0,
-                                cpu_time_us: 0,
-                                user_time_us: 0,
-                                kernel_time_us: 0,
-                                io_bytes_read: 0,
-                                io_bytes_written: 0,
-                            });
+                    let final_usage = self.sandbox.get_resource_usage().unwrap_or(ResourceUsage {
+                        memory_bytes: 0,
+                        cpu_time_us: 0,
+                        user_time_us: 0,
+                        kernel_time_us: 0,
+                        io_bytes_read: 0,
+                        io_bytes_written: 0,
+                    });
 
                     let completed = Utc::now();
                     let wall_time = start_time.elapsed();
@@ -207,25 +200,25 @@ impl Executor {
     }
 }
 
-struct SandboxResourceProvider<'a> {
-    sandbox: &'a Sandbox,
-}
+// struct SandboxResourceProvider<'a> {
+//     sandbox: &'a Sandbox,
+// }
 
-impl<'a> SandboxResourceProvider<'a> {
-    fn new(sandbox: &'a Sandbox) -> Self {
-        Self { sandbox }
-    }
-}
+// impl<'a> SandboxResourceProvider<'a> {
+//     fn new(sandbox: &'a Sandbox) -> Self {
+//         Self { sandbox }
+//     }
+// }
 
-impl<'a> ResourceProvider for SandboxResourceProvider<'a> {
-    fn get_usage(&self) -> CapsuleResult<ResourceUsage> {
-        self.sandbox.get_resource_usage()
-    }
+// impl<'a> ResourceProvider for SandboxResourceProvider<'a> {
+//     fn get_usage(&self) -> CapsuleResult<ResourceUsage> {
+//         self.sandbox.get_resource_usage()
+//     }
 
-    fn check_oom_killed(&self) -> CapsuleResult<bool> {
-        self.sandbox.check_oom_killed()
-    }
-}
+//     fn check_oom_killed(&self) -> CapsuleResult<bool> {
+//         self.sandbox.check_oom_killed()
+//     }
+// }
 
 #[cfg(test)]
 mod tests {
