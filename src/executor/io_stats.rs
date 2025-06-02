@@ -4,12 +4,15 @@ use crate::error::CapsuleResult;
 pub struct IoStats {
     pub read_bytes: u64,
     pub write_bytes: u64,
+    #[allow(dead_code)] // Used for future detailed I/O analysis
     pub read_calls: u64,
+    #[allow(dead_code)] // Used for future detailed I/O analysis
     pub write_calls: u64,
 }
 
 pub struct IoMonitor {
     pid: u32,
+    #[allow(dead_code)] // Used for future delta calculations
     last_stats: IoStats,
 }
 
@@ -21,6 +24,7 @@ impl IoMonitor {
         }
     }
 
+    #[allow(dead_code)] // Used for future delta I/O monitoring
     pub fn get_current_stats(&mut self) -> CapsuleResult<IoStats> {
         let current = get_process_io_stats(self.pid)?;
 
@@ -182,12 +186,14 @@ mod macos_advanced {
 }
 
 #[cfg(target_os = "macos")]
+#[allow(dead_code)] // Used for future enhanced I/O monitoring
 pub fn get_enhanced_io_stats(pid: u32) -> CapsuleResult<IoStats> {
     // Try the enhanced libproc method first, fall back to rusage
     macos_advanced::get_detailed_io_stats(pid).or_else(|_| get_process_io_stats(pid))
 }
 
 #[cfg(not(target_os = "macos"))]
+#[allow(dead_code)] // Used for future enhanced I/O monitoring
 pub fn get_enhanced_io_stats(pid: u32) -> CapsuleResult<IoStats> {
     get_process_io_stats(pid)
 }
