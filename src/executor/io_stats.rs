@@ -25,7 +25,7 @@ impl IoMonitor {
         let current = get_process_io_stats(self.pid)?;
         
         // Calculate delta since last measurement
-        let delta = IoStats {
+        let _delta = IoStats {
             read_bytes: current.read_bytes.saturating_sub(self.last_stats.read_bytes),
             write_bytes: current.write_bytes.saturating_sub(self.last_stats.write_bytes),
             read_calls: current.read_calls.saturating_sub(self.last_stats.read_calls),
@@ -42,7 +42,7 @@ impl IoMonitor {
 }
 
 #[cfg(target_os = "linux")]
-pub fn get_process_io_stats(pid: u32) -> CapsuleResult<IoStats> {
+pub fn get_process_io_stats(_pid: u32) -> CapsuleResult<IoStats> {
     let io_path = format!("/proc/{}/io", pid);
     let content = std::fs::read_to_string(io_path).map_err(|e| {
         crate::error::CapsuleError::Syscall(format!("Failed to read process I/O stats: {}", e))
@@ -74,7 +74,7 @@ pub fn get_process_io_stats(pid: u32) -> CapsuleResult<IoStats> {
 }
 
 #[cfg(target_os = "macos")]
-pub fn get_process_io_stats(pid: u32) -> CapsuleResult<IoStats> {
+pub fn get_process_io_stats(_pid: u32) -> CapsuleResult<IoStats> {
     // Use rusage for basic I/O statistics on macOS
     let usage = unsafe {
         let mut usage: libc::rusage = std::mem::zeroed();

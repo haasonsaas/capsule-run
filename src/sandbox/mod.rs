@@ -110,7 +110,13 @@ impl Sandbox {
         self.seccomp_filter.setup_allowlist()?;
 
         if isolation.network {
-            self.seccomp_filter = self.seccomp_filter.with_network_access()?;
+            // Clone and replace the seccomp filter with network access
+            let new_filter = SeccompFilter::new()?;
+            // Setup basic allowlist first
+            let mut new_filter = new_filter;
+            new_filter.setup_allowlist()?;
+            // Add network access
+            self.seccomp_filter = new_filter.with_network_access()?;
         }
 
         // Stage 2: Enter namespace and apply security restrictions

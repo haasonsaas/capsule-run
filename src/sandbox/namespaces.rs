@@ -4,7 +4,7 @@ use crate::error::{CapsuleResult, SandboxError};
 use nix::sched::{unshare, CloneFlags};
 #[cfg(target_os = "linux")]
 use nix::unistd::{getgid, getuid, Gid, Uid};
-use std::fs::{File, OpenOptions};
+use std::fs::OpenOptions;
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
 
@@ -101,7 +101,7 @@ impl NamespaceManager {
 
     pub fn enter_namespaces() -> CapsuleResult<()> {
         use nix::sys::wait::{waitpid, WaitStatus};
-        use nix::unistd::{fork, ForkResult, Pid};
+        use nix::unistd::{fork, ForkResult};
 
         match unsafe { fork() }.map_err(|e| SandboxError::NamespaceCreation {
             namespace: format!("fork failed: {}", e),
@@ -130,8 +130,7 @@ impl NamespaceManager {
 
     fn setup_pid_namespace() -> CapsuleResult<()> {
         use nix::sys::signal::{self, Signal};
-        use nix::unistd::Pid;
-        use std::collections::HashMap;
+        // Signal handling setup
 
         extern "C" fn handle_signal(_: libc::c_int) {
             unsafe {

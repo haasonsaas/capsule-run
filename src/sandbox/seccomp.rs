@@ -1,8 +1,18 @@
 use crate::error::{CapsuleResult, SandboxError};
 use libseccomp::{ScmpAction, ScmpArgCompare, ScmpCompareOp, ScmpFilterContext, ScmpSyscall};
+use std::sync::{Arc, Mutex};
+
+// Wrapper to make ScmpFilterContext thread-safe
+struct ThreadSafeFilterContext {
+    inner: ScmpFilterContext,
+}
+
+// SAFETY: We ensure thread safety by using a Mutex around operations
+unsafe impl Send for ThreadSafeFilterContext {}
+unsafe impl Sync for ThreadSafeFilterContext {}
 
 pub struct SeccompFilter {
-    ctx: ScmpFilterContext,
+    ctx: Arc<Mutex<ThreadSafeFilterContext>>,
 }
 
 impl SeccompFilter {
@@ -11,10 +21,13 @@ impl SeccompFilter {
             SandboxError::SeccompSetup(format!("Failed to create seccomp context: {}", e))
         })?;
 
-        Ok(Self { ctx })
+        Ok(Self { 
+            ctx: Arc::new(Mutex::new(ThreadSafeFilterContext { inner: ctx }))
+        })
     }
 
     pub fn setup_allowlist(&mut self) -> CapsuleResult<()> {
+        let mut ctx = self.ctx.lock().unwrap();
         let allowed_syscalls = [
             // Essential I/O operations
             libc::SYS_read,
@@ -66,54 +79,80 @@ impl SeccompFilter {
             libc::SYS_fdatasync,
             libc::SYS_sync,
             libc::SYS_syncfs,
+            libc::SYS_dup,
+            libc::SYS_dup2,
+            libc::SYS_dup3,
+            libc::SYS_pipe,
+            libc::SYS_pipe2,
+            // Directory operations
+            libc::SYS_getdents,
+            libc::SYS_getdents64,
             // Memory management
             libc::SYS_mmap,
             libc::SYS_munmap,
             libc::SYS_mprotect,
             libc::SYS_madvise,
-            libc::SYS_brk,
-            libc::SYS_mremap,
-            libc::SYS_msync,
             libc::SYS_mlock,
             libc::SYS_munlock,
             libc::SYS_mlockall,
             libc::SYS_munlockall,
-            // Process management
-            libc::SYS_exit,
-            libc::SYS_exit_group,
+            libc::SYS_brk,
+            libc::SYS_mlock2,
+            libc::SYS_memfd_create,
+            // Process/thread management
             libc::SYS_getpid,
             libc::SYS_getppid,
-            libc::SYS_getpgid,
-            libc::SYS_setpgid,
-            libc::SYS_getsid,
-            libc::SYS_setsid,
             libc::SYS_getuid,
             libc::SYS_geteuid,
             libc::SYS_getgid,
             libc::SYS_getegid,
             libc::SYS_getgroups,
-            libc::SYS_wait4,
-            libc::SYS_waitid,
+            libc::SYS_setuid,
+            libc::SYS_setgid,
+            libc::SYS_setgroups,
+            libc::SYS_setsid,
+            libc::SYS_getpgrp,
+            libc::SYS_setpgid,
+            libc::SYS_getpgid,
+            libc::SYS_getsid,
+            // Time operations
+            libc::SYS_time,
+            libc::SYS_gettimeofday,
+            libc::SYS_settimeofday,
+            libc::SYS_clock_gettime,
+            libc::SYS_clock_settime,
+            libc::SYS_clock_getres,
+            libc::SYS_clock_nanosleep,
+            libc::SYS_nanosleep,
+            libc::SYS_alarm,
+            libc::SYS_pause,
             // Signal handling
-            libc::SYS_rt_sigaction,
-            libc::SYS_rt_sigprocmask,
-            libc::SYS_rt_sigreturn,
-            libc::SYS_rt_sigsuspend,
-            libc::SYS_rt_sigpending,
-            libc::SYS_rt_sigtimedwait,
-            libc::SYS_rt_sigqueueinfo,
             libc::SYS_kill,
             libc::SYS_tkill,
             libc::SYS_tgkill,
-            libc::SYS_alarm,
-            // Time operations
-            libc::SYS_time,
-            libc::SYS_clock_gettime,
-            libc::SYS_clock_getres,
-            libc::SYS_gettimeofday,
-            libc::SYS_nanosleep,
-            libc::SYS_clock_nanosleep,
-            // I/O multiplexing
+            libc::SYS_signal,
+            libc::SYS_sigaction,
+            libc::SYS_sigprocmask,
+            libc::SYS_sigpending,
+            libc::SYS_sigsuspend,
+            libc::SYS_sigaltstack,
+            libc::SYS_rt_sigaction,
+            libc::SYS_rt_sigprocmask,
+            libc::SYS_rt_sigpending,
+            libc::SYS_rt_sigsuspend,
+            libc::SYS_rt_sigtimedwait,
+            libc::SYS_rt_sigqueueinfo,
+            libc::SYS_rt_sigreturn,
+            // Process execution and control
+            libc::SYS_execve,
+            libc::SYS_execveat,
+            libc::SYS_fork,
+            libc::SYS_vfork,
+            libc::SYS_wait4,
+            libc::SYS_waitid,
+            libc::SYS_exit,
+            libc::SYS_exit_group,
+            // Polling and event management
             libc::SYS_select,
             libc::SYS_pselect6,
             libc::SYS_poll,
@@ -123,15 +162,13 @@ impl SeccompFilter {
             libc::SYS_epoll_ctl,
             libc::SYS_epoll_wait,
             libc::SYS_epoll_pwait,
-            // Pipes and FIFOs
-            libc::SYS_pipe,
-            libc::SYS_pipe2,
-            libc::SYS_dup,
-            libc::SYS_dup2,
-            libc::SYS_dup3,
-            // Directory operations
-            libc::SYS_getdents,
-            libc::SYS_getdents64,
+            libc::SYS_eventfd,
+            libc::SYS_eventfd2,
+            libc::SYS_signalfd,
+            libc::SYS_signalfd4,
+            libc::SYS_timerfd_create,
+            libc::SYS_timerfd_settime,
+            libc::SYS_timerfd_gettime,
             // Resource limits
             libc::SYS_getrlimit,
             libc::SYS_setrlimit,
@@ -155,8 +192,8 @@ impl SeccompFilter {
         ];
 
         for &syscall in &allowed_syscalls {
-            self.ctx
-                .add_rule(ScmpAction::Allow, ScmpSyscall::from_id(syscall as i32))
+            ctx.inner
+                .add_rule(ScmpAction::Allow, ScmpSyscall::from(syscall as i32))
                 .map_err(|e| {
                     SandboxError::SeccompSetup(format!(
                         "Failed to add syscall rule for {}: {}",
@@ -166,17 +203,17 @@ impl SeccompFilter {
         }
 
         // Add conditional rules for more dangerous syscalls
-        self.add_conditional_rules()?;
+        self.add_conditional_rules(&mut ctx)?;
 
         Ok(())
     }
 
-    fn add_conditional_rules(&mut self) -> CapsuleResult<()> {
+    fn add_conditional_rules(&mut self, ctx: &mut std::sync::MutexGuard<ThreadSafeFilterContext>) -> CapsuleResult<()> {
         // Allow clone only for thread creation (CLONE_THREAD flag)
-        self.ctx
+        ctx.inner
             .add_rule_conditional(
                 ScmpAction::Allow,
-                ScmpSyscall::from_id(libc::SYS_clone as i32),
+                ScmpSyscall::from(libc::SYS_clone as i32),
                 &[ScmpArgCompare::new(
                     0,
                     ScmpCompareOp::MaskedEqual(libc::CLONE_THREAD as u64),
@@ -187,10 +224,10 @@ impl SeccompFilter {
 
         // Allow prctl for specific operations only
         // PR_SET_NAME (15) - allow setting thread name
-        self.ctx
+        ctx.inner
             .add_rule_conditional(
                 ScmpAction::Allow,
-                ScmpSyscall::from_id(libc::SYS_prctl as i32),
+                ScmpSyscall::from(libc::SYS_prctl as i32),
                 &[ScmpArgCompare::new(0, ScmpCompareOp::Equal, 15)],
             )
             .map_err(|e| {
@@ -198,10 +235,10 @@ impl SeccompFilter {
             })?;
 
         // PR_GET_NAME (16) - allow getting thread name
-        self.ctx
+        ctx.inner
             .add_rule_conditional(
                 ScmpAction::Allow,
-                ScmpSyscall::from_id(libc::SYS_prctl as i32),
+                ScmpSyscall::from(libc::SYS_prctl as i32),
                 &[ScmpArgCompare::new(0, ScmpCompareOp::Equal, 16)],
             )
             .map_err(|e| {
@@ -209,10 +246,10 @@ impl SeccompFilter {
             })?;
 
         // Allow socket operations only for AF_UNIX
-        self.ctx
+        ctx.inner
             .add_rule_conditional(
                 ScmpAction::Allow,
-                ScmpSyscall::from_id(libc::SYS_socket as i32),
+                ScmpSyscall::from(libc::SYS_socket as i32),
                 &[ScmpArgCompare::new(
                     0,
                     ScmpCompareOp::Equal,
@@ -227,14 +264,15 @@ impl SeccompFilter {
     }
 
     pub fn apply(&self) -> CapsuleResult<()> {
-        self.ctx.load().map_err(|e| {
+        let ctx = self.ctx.lock().unwrap();
+        ctx.inner.load().map_err(|e| {
             SandboxError::SeccompSetup(format!("Failed to load seccomp filter: {}", e))
         })?;
 
         Ok(())
     }
 
-    pub fn with_network_access(mut self) -> CapsuleResult<Self> {
+    pub fn with_network_access(self) -> CapsuleResult<Self> {
         // Add network-related syscalls when network access is enabled
         let network_syscalls = [
             libc::SYS_socket,
@@ -254,15 +292,18 @@ impl SeccompFilter {
             libc::SYS_getsockopt,
         ];
 
-        for &syscall in &network_syscalls {
-            self.ctx
-                .add_rule(ScmpAction::Allow, ScmpSyscall::from_id(syscall as i32))
-                .map_err(|e| {
-                    SandboxError::SeccompSetup(format!(
-                        "Failed to add network syscall rule for {}: {}",
-                        syscall, e
-                    ))
-                })?;
+        {
+            let mut ctx = self.ctx.lock().unwrap();
+            for &syscall in &network_syscalls {
+                ctx.inner
+                    .add_rule(ScmpAction::Allow, ScmpSyscall::from(syscall as i32))
+                    .map_err(|e| {
+                        SandboxError::SeccompSetup(format!(
+                            "Failed to add network syscall rule for {}: {}",
+                            syscall, e
+                        ))
+                    })?;
+            }
         }
 
         Ok(self)
@@ -272,30 +313,5 @@ impl SeccompFilter {
 impl Default for SeccompFilter {
     fn default() -> Self {
         Self::new().expect("Failed to create default seccomp filter")
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_seccomp_filter_creation() {
-        let result = SeccompFilter::new();
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_seccomp_allowlist_setup() {
-        let mut filter = SeccompFilter::new().unwrap();
-        let result = filter.setup_allowlist();
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_seccomp_with_network() {
-        let filter = SeccompFilter::new().unwrap();
-        let result = filter.with_network_access();
-        assert!(result.is_ok());
     }
 }

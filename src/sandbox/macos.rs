@@ -1,5 +1,5 @@
 use crate::api::schema::{IsolationConfig, ResourceLimits};
-use crate::error::{CapsuleResult, SandboxError};
+use crate::error::CapsuleResult;
 use std::process::Command;
 use uuid::Uuid;
 

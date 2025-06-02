@@ -2,7 +2,7 @@ use crate::api::schema::ResourceLimits;
 use crate::error::{CapsuleResult, SandboxError};
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use uuid::Uuid;
 
 pub struct CgroupManager {
