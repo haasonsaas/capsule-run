@@ -121,6 +121,20 @@ async fn run() -> CapsuleResult<i32> {
         return Ok(0);
     }
 
+    // Show help if no command provided and not in JSON mode
+    if !cli.json && cli.command.is_empty() {
+        eprintln!("Error: No command specified.");
+        eprintln!();
+        eprintln!("Use --help for usage information or --json to read from stdin.");
+        eprintln!();
+        eprintln!("Examples:");
+        eprintln!("  capsule-run -- echo 'Hello, World!'");
+        eprintln!("  echo '{{\"command\": [\"echo\", \"test\"]}}' | capsule-run --json");
+        return Err(crate::error::CapsuleError::Config(
+            "No command specified".to_string(),
+        ));
+    }
+
     // Load configuration
     let config = if let Some(config_path) = &cli.config {
         crate::config::Config::load_from_file(std::path::Path::new(config_path))?
