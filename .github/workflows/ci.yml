@@ -143,7 +143,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libseccomp-dev
           if [[ "${{ matrix.target }}" == "aarch64-unknown-linux-gnu" ]]; then
-            sudo apt-get install -y gcc-aarch64-linux-gnu
+            # Set up proper ARM64 cross-compilation environment
+            sudo apt-get install -y gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+            # Build libseccomp from source for ARM64 since package isn't available
+            wget https://github.com/seccomp/libseccomp/releases/download/v2.5.5/libseccomp-2.5.5.tar.gz
+            tar -xzf libseccomp-2.5.5.tar.gz
+            cd libseccomp-2.5.5
+            ./configure --host=aarch64-linux-gnu --prefix=/usr/aarch64-linux-gnu
+            make -j$(nproc)
+            sudo make install
+            cd ..
           fi
           if [[ "${{ matrix.target }}" == "x86_64-unknown-linux-musl" ]]; then
             sudo apt-get install -y musl-tools
@@ -156,11 +165,14 @@ jobs:
               # Build musl target without seccomp for better static linking compatibility
               cargo build --release --target ${{ matrix.target }} --no-default-features
             elif [[ "${{ matrix.target }}" == "aarch64-unknown-linux-gnu" ]]; then
-              # Configure cross-compilation for ARM64 without seccomp (dependency issues)
+              # Configure cross-compilation for ARM64 with full seccomp support
               export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
               export CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc
               export AR_aarch64_unknown_linux_gnu=aarch64-linux-gnu-ar
-              cargo build --release --target ${{ matrix.target }} --no-default-features
+              export PKG_CONFIG_ALLOW_CROSS=1
+              export PKG_CONFIG_PATH=/usr/aarch64-linux-gnu/lib/pkgconfig
+              export PKG_CONFIG_SYSROOT_DIR=/usr/aarch64-linux-gnu
+              cargo build --release --target ${{ matrix.target }}
             else
               cargo build --release --target ${{ matrix.target }}
             fi
