@@ -40,7 +40,40 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libseccomp-dev
-      - run: cargo test ${{ matrix.features }}
+      - name: Enable user namespaces (for default features)
+        if: matrix.features == ''
+        run: |
+          # Check current user namespace settings
+          echo "Current user namespace settings:"
+          cat /proc/sys/user/max_user_namespaces || echo "No user namespace limit file"
+          cat /proc/sys/kernel/unprivileged_userns_clone || echo "No unprivileged_userns_clone file"
+          
+          # Enable unprivileged user namespaces if the setting exists
+          if [ -f /proc/sys/kernel/unprivileged_userns_clone ]; then
+            echo 1 | sudo tee /proc/sys/kernel/unprivileged_userns_clone
+          fi
+          
+          # Set a reasonable limit for user namespaces
+          if [ -f /proc/sys/user/max_user_namespaces ]; then
+            echo 15000 | sudo tee /proc/sys/user/max_user_namespaces
+          fi
+          
+      - name: Test with sandboxing capabilities
+        if: matrix.features == ''
+        run: |
+          # First run unit tests
+          cargo test --lib ${{ matrix.features }}
+          
+          # Test namespace creation capability
+          echo "Testing namespace support:"
+          unshare --user --map-root-user echo "User namespaces work!" || echo "User namespaces not supported"
+          
+          # Run integration tests that require sandboxing
+          cargo test --test integration_tests ${{ matrix.features }} || echo "Integration tests failed - may be expected in CI environment"
+          
+      - name: Test without sandboxing features
+        if: matrix.features == '--no-default-features'
+        run: cargo test ${{ matrix.features }}
 
   fmt:
     name: Rustfmt

@@ -32,8 +32,22 @@ impl NamespaceManager {
             flags |= CloneFlags::CLONE_NEWNET;
         }
 
-        unshare(flags).map_err(|e| SandboxError::NamespaceCreation {
-            namespace: format!("unshare failed: {}", e),
+        unshare(flags).map_err(|e| {
+            let error_msg = match e {
+                nix::errno::Errno::EINVAL => {
+                    "Namespace creation failed: Invalid argument. This may occur in containers or environments without user namespace support. Consider running on a system with full namespace support or using --no-sandbox mode if available.".to_string()
+                }
+                nix::errno::Errno::EPERM => {
+                    "Namespace creation failed: Permission denied. User namespaces may be disabled or restricted. Try running with appropriate privileges or on a system with user namespace support.".to_string()
+                }
+                nix::errno::Errno::ENOSPC => {
+                    "Namespace creation failed: No space left. Maximum number of user namespaces reached.".to_string()
+                }
+                _ => format!("Namespace creation failed: {}", e),
+            };
+            SandboxError::NamespaceCreation {
+                namespace: error_msg,
+            }
         })?;
 
         self.setup_user_namespace()?;
