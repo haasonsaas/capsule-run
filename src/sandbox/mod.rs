@@ -1,27 +1,27 @@
 #[cfg(target_os = "linux")]
-pub mod namespaces;
-#[cfg(target_os = "linux")]
 pub mod cgroups;
 #[cfg(target_os = "linux")]
-pub mod seccomp;
-#[cfg(target_os = "linux")]
 pub mod filesystem;
+#[cfg(target_os = "linux")]
+pub mod namespaces;
+#[cfg(target_os = "linux")]
+pub mod seccomp;
 
 #[cfg(target_os = "linux")]
-use crate::api::schema::{ResourceLimits, IsolationConfig};
+use crate::api::schema::{IsolationConfig, ResourceLimits};
 #[cfg(target_os = "linux")]
 use crate::error::{CapsuleResult, SandboxError};
 #[cfg(target_os = "linux")]
 use uuid::Uuid;
 
 #[cfg(target_os = "linux")]
-pub use namespaces::NamespaceManager;
-#[cfg(target_os = "linux")]
 pub use cgroups::{CgroupManager, ResourceUsage};
 #[cfg(target_os = "linux")]
-pub use seccomp::SeccompFilter;
-#[cfg(target_os = "linux")]
 pub use filesystem::FilesystemManager;
+#[cfg(target_os = "linux")]
+pub use namespaces::NamespaceManager;
+#[cfg(target_os = "linux")]
+pub use seccomp::SeccompFilter;
 
 // Stub implementations for non-Linux platforms
 #[cfg(not(target_os = "linux"))]
@@ -75,27 +75,31 @@ impl Sandbox {
         })
     }
 
-    pub fn setup(&mut self, resources: &ResourceLimits, isolation: &IsolationConfig) -> CapsuleResult<()> {
+    pub fn setup(
+        &mut self,
+        resources: &ResourceLimits,
+        isolation: &IsolationConfig,
+    ) -> CapsuleResult<()> {
         // Stage 1: Setup privileged operations
         self.namespace_manager.setup_namespaces(isolation.network)?;
         self.cgroup_manager.setup(resources)?;
-        
+
         // Setup filesystem isolation
         self.filesystem_manager.setup_isolation(isolation)?;
-        
+
         // Setup seccomp filter
         self.seccomp_filter.setup_allowlist()?;
-        
+
         if isolation.network {
             self.seccomp_filter = self.seccomp_filter.with_network_access()?;
         }
 
         // Stage 2: Enter namespace and apply security restrictions
         NamespaceManager::enter_namespaces()?;
-        
+
         // Drop capabilities
         self.drop_capabilities()?;
-        
+
         // Apply seccomp filter (must be last)
         self.seccomp_filter.apply()?;
 
@@ -103,7 +107,7 @@ impl Sandbox {
     }
 
     fn drop_capabilities(&self) -> CapsuleResult<()> {
-        use caps::{CapSet, clear};
+        use caps::{clear, CapSet};
 
         // Clear all capability sets
         clear(None, CapSet::Effective).map_err(|e| {
@@ -142,9 +146,13 @@ impl Sandbox {
         Ok(Self { execution_id })
     }
 
-    pub fn setup(&mut self, _resources: &crate::api::ResourceLimits, _isolation: &crate::api::IsolationConfig) -> crate::error::CapsuleResult<()> {
+    pub fn setup(
+        &mut self,
+        _resources: &crate::api::ResourceLimits,
+        _isolation: &crate::api::IsolationConfig,
+    ) -> crate::error::CapsuleResult<()> {
         Err(crate::error::CapsuleError::Config(
-            "Sandbox functionality is only available on Linux".to_string()
+            "Sandbox functionality is only available on Linux".to_string(),
         ))
     }
 

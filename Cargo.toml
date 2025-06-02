@@ -31,7 +31,7 @@ libc = "0.2"
 
 # Linux system interfaces (only on Linux)
 [target.'cfg(target_os = "linux")'.dependencies]
-nix = { version = "0.28", features = ["mount", "signal", "process", "user"] }
+nix = { version = "0.28", features = ["mount", "signal", "process", "user", "sched", "fs"] }
 caps = "0.5"
 libseccomp = "0.3"
 

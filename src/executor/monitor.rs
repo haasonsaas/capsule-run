@@ -1,9 +1,12 @@
 use crate::error::{CapsuleResult, ExecutionError};
 use crate::sandbox::ResourceUsage;
-use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
+use std::sync::mpsc;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 use std::thread;
 use std::time::{Duration, Instant};
-use std::sync::mpsc;
 
 pub struct ResourceMonitor {
     stop_flag: Arc<AtomicBool>,
@@ -45,7 +48,13 @@ impl ResourceMonitor {
             let start_time = Instant::now();
 
             Some(thread::spawn(move || {
-                Self::monitoring_loop(provider, stop_flag, peak_usage, monitoring_interval, start_time)
+                Self::monitoring_loop(
+                    provider,
+                    stop_flag,
+                    peak_usage,
+                    monitoring_interval,
+                    start_time,
+                )
             }))
         };
 
@@ -157,9 +166,7 @@ impl ProcessMonitor {
         let stop_flag = Arc::new(AtomicBool::new(false));
         let monitor_handle = {
             let stop_flag = Arc::clone(&stop_flag);
-            Some(thread::spawn(move || {
-                Self::monitor_process(pid, stop_flag)
-            }))
+            Some(thread::spawn(move || Self::monitor_process(pid, stop_flag)))
         };
 
         Self {
@@ -181,52 +188,49 @@ impl ProcessMonitor {
         }
     }
 
-    fn monitor_process(
-        pid: u32,
-        stop_flag: Arc<AtomicBool>,
-    ) -> CapsuleResult<ProcessStatus> {
+    fn monitor_process(pid: u32, stop_flag: Arc<AtomicBool>) -> CapsuleResult<ProcessStatus> {
         #[cfg(target_os = "linux")]
         {
             use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
             use nix::unistd::Pid;
 
-        let nix_pid = Pid::from_raw(pid as i32);
+            let nix_pid = Pid::from_raw(pid as i32);
 
-        loop {
-            if stop_flag.load(Ordering::Relaxed) {
-                return Ok(ProcessStatus::Running);
+            loop {
+                if stop_flag.load(Ordering::Relaxed) {
+                    return Ok(ProcessStatus::Running);
+                }
+
+                match waitpid(nix_pid, Some(WaitPidFlag::WNOHANG)) {
+                    Ok(WaitStatus::Exited(_, exit_code)) => {
+                        return Ok(ProcessStatus::Exited(exit_code));
+                    }
+                    Ok(WaitStatus::Signaled(_, signal, _)) => {
+                        return Ok(ProcessStatus::Signaled(signal as i32));
+                    }
+                    Ok(WaitStatus::Stopped(_, signal)) => {
+                        return Ok(ProcessStatus::Stopped(signal as i32));
+                    }
+                    Ok(WaitStatus::StillAlive) => {
+                        // Process is still running
+                    }
+                    Ok(_) => {
+                        // Other status types
+                    }
+                    Err(nix::errno::Errno::ECHILD) => {
+                        // Process has already been reaped
+                        return Ok(ProcessStatus::Unknown);
+                    }
+                    Err(_) => {
+                        // Other errors
+                        return Ok(ProcessStatus::Unknown);
+                    }
+                }
+
+                thread::sleep(Duration::from_millis(10));
             }
-
-            match waitpid(nix_pid, Some(WaitPidFlag::WNOHANG)) {
-                Ok(WaitStatus::Exited(_, exit_code)) => {
-                    return Ok(ProcessStatus::Exited(exit_code));
-                }
-                Ok(WaitStatus::Signaled(_, signal, _)) => {
-                    return Ok(ProcessStatus::Signaled(signal as i32));
-                }
-                Ok(WaitStatus::Stopped(_, signal)) => {
-                    return Ok(ProcessStatus::Stopped(signal as i32));
-                }
-                Ok(WaitStatus::StillAlive) => {
-                    // Process is still running
-                }
-                Ok(_) => {
-                    // Other status types
-                }
-                Err(nix::errno::Errno::ECHILD) => {
-                    // Process has already been reaped
-                    return Ok(ProcessStatus::Unknown);
-                }
-                Err(_) => {
-                    // Other errors
-                    return Ok(ProcessStatus::Unknown);
-                }
-            }
-
-            thread::sleep(Duration::from_millis(10));
         }
-        }
-        
+
         #[cfg(not(target_os = "linux"))]
         {
             // Simple polling implementation for non-Linux platforms
@@ -234,11 +238,11 @@ impl ProcessMonitor {
                 if stop_flag.load(Ordering::Relaxed) {
                     return Ok(ProcessStatus::Running);
                 }
-                
+
                 if !Self::check_process_exists_simple(pid) {
                     return Ok(ProcessStatus::Exited(0));
                 }
-                
+
                 thread::sleep(Duration::from_millis(100));
             }
         }
@@ -251,7 +255,7 @@ impl ProcessMonitor {
     fn check_process_exists(&self, pid: u32) -> bool {
         Self::check_process_exists_simple(pid)
     }
-    
+
     fn check_process_exists_simple(pid: u32) -> bool {
         #[cfg(target_os = "linux")]
         {
@@ -260,9 +264,7 @@ impl ProcessMonitor {
         #[cfg(not(target_os = "linux"))]
         {
             // On non-Linux, try to send signal 0 to check if process exists
-            unsafe {
-                libc::kill(pid as i32, 0) == 0
-            }
+            unsafe { libc::kill(pid as i32, 0) == 0 }
         }
     }
 }
@@ -278,7 +280,7 @@ impl TimeoutMonitor {
     pub fn new(timeout_duration: Duration) -> (Self, mpsc::Sender<()>) {
         let (sender, receiver) = mpsc::channel();
         let start_time = Instant::now();
-        
+
         let timeout_sender = sender.clone();
         let handle = thread::spawn(move || {
             thread::sleep(timeout_duration);
@@ -344,9 +346,9 @@ mod tests {
         });
 
         let monitor = ResourceMonitor::new(provider, Duration::from_millis(10));
-        
+
         thread::sleep(Duration::from_millis(50));
-        
+
         let result = monitor.stop_and_get_result().unwrap();
         assert!(result.peak_memory > 0);
         assert!(result.wall_time >= Duration::from_millis(50));
@@ -355,11 +357,11 @@ mod tests {
     #[test]
     fn test_timeout_monitor() {
         let (monitor, _sender) = TimeoutMonitor::new(Duration::from_millis(100));
-        
+
         assert!(!monitor.check_timeout());
-        
+
         thread::sleep(Duration::from_millis(150));
-        
+
         assert!(monitor.check_timeout());
     }
 
@@ -368,10 +370,10 @@ mod tests {
         // Test with current process (should be running)
         let monitor = ProcessMonitor::new(std::process::id());
         assert!(monitor.is_alive());
-        
+
         let status = monitor.stop_and_get_status().unwrap();
         match status {
-            ProcessStatus::Running => {},
+            ProcessStatus::Running => {}
             _ => panic!("Expected running status"),
         }
     }

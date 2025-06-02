@@ -23,7 +23,9 @@ pub struct ResourceUsage {
 impl CgroupManager {
     pub fn new(execution_id: Uuid) -> CapsuleResult<Self> {
         let cgroup_base = Self::find_cgroup_mount()?;
-        let cgroup_path = cgroup_base.join("capsule-run").join(execution_id.to_string());
+        let cgroup_path = cgroup_base
+            .join("capsule-run")
+            .join(execution_id.to_string());
 
         Ok(Self {
             cgroup_path,
@@ -81,9 +83,7 @@ impl CgroupManager {
             }
         }
 
-        Err(SandboxError::CgroupSetup(
-            "cgroups v2 not mounted".to_string(),
-        ).into())
+        Err(SandboxError::CgroupSetup("cgroups v2 not mounted".to_string()).into())
     }
 
     fn create_cgroup(&self) -> CapsuleResult<()> {
@@ -114,7 +114,7 @@ impl CgroupManager {
     fn set_memory_limit(&self, limit_bytes: u64) -> CapsuleResult<()> {
         self.write_cgroup_file("memory.max", &limit_bytes.to_string())?;
         self.write_cgroup_file("memory.swap.max", "0")?; // Disable swap
-        
+
         let low_limit = limit_bytes / 2;
         self.write_cgroup_file("memory.low", &low_limit.to_string())?;
 
@@ -144,7 +144,7 @@ impl CgroupManager {
 
     fn write_cgroup_file(&self, filename: &str, content: &str) -> CapsuleResult<()> {
         let file_path = self.cgroup_path.join(filename);
-        
+
         let mut file = OpenOptions::new()
             .write(true)
             .create(false)
@@ -170,7 +170,7 @@ impl CgroupManager {
 
     fn read_cgroup_file(&self, filename: &str) -> CapsuleResult<String> {
         let file_path = self.cgroup_path.join(filename);
-        
+
         let mut content = String::new();
         let mut file = File::open(&file_path).map_err(|e| {
             SandboxError::CgroupSetup(format!(
@@ -200,7 +200,7 @@ impl CgroupManager {
 
     fn get_cpu_usage(&self) -> CapsuleResult<(u64, u64, u64)> {
         let content = self.read_cgroup_file("cpu.stat")?;
-        
+
         let mut usage_usec = 0u64;
         let mut user_usec = 0u64;
         let mut system_usec = 0u64;
@@ -228,7 +228,7 @@ impl CgroupManager {
 
     fn get_io_usage(&self) -> CapsuleResult<(u64, u64)> {
         let content = self.read_cgroup_file("io.stat")?;
-        
+
         let mut bytes_read = 0u64;
         let mut bytes_written = 0u64;
 
@@ -261,13 +261,14 @@ impl CgroupManager {
                 "Failed to open events file {}: {}",
                 events_path.display(),
                 e
-            )).into()
+            ))
+            .into()
         })
     }
 
     pub fn check_oom_killed(&self) -> CapsuleResult<bool> {
         let content = self.read_cgroup_file("memory.events")?;
-        
+
         for line in content.lines() {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 2 && parts[0] == "oom_kill" {
@@ -294,26 +295,27 @@ mod tests {
     fn test_cgroup_manager_creation() {
         let execution_id = Uuid::new_v4();
         let result = CgroupManager::new(execution_id);
-        
+
         match result {
             Ok(manager) => {
-                assert!(manager.cgroup_path.to_string_lossy().contains(&execution_id.to_string()));
+                assert!(manager
+                    .cgroup_path
+                    .to_string_lossy()
+                    .contains(&execution_id.to_string()));
             }
-            Err(_) => {
-            }
+            Err(_) => {}
         }
     }
 
     #[test]
     fn test_find_cgroup_mount() {
         let result = CgroupManager::find_cgroup_mount();
-        
+
         match result {
             Ok(path) => {
                 assert!(path.exists());
             }
-            Err(_) => {
-            }
+            Err(_) => {}
         }
     }
 }

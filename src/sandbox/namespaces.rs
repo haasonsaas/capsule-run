@@ -1,9 +1,9 @@
 #[cfg(target_os = "linux")]
 use crate::error::{CapsuleResult, SandboxError};
 #[cfg(target_os = "linux")]
-use nix::sched::{CloneFlags, unshare};
+use nix::sched::{unshare, CloneFlags};
 #[cfg(target_os = "linux")]
-use nix::unistd::{getuid, getgid, Uid, Gid};
+use nix::unistd::{getgid, getuid, Gid, Uid};
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::os::unix::fs::OpenOptionsExt;
@@ -32,10 +32,8 @@ impl NamespaceManager {
             flags |= CloneFlags::CLONE_NEWNET;
         }
 
-        unshare(flags).map_err(|e| {
-            SandboxError::NamespaceCreation {
-                namespace: format!("unshare failed: {}", e),
-            }
+        unshare(flags).map_err(|e| SandboxError::NamespaceCreation {
+            namespace: format!("unshare failed: {}", e),
         })?;
 
         self.setup_user_namespace()?;
@@ -45,7 +43,7 @@ impl NamespaceManager {
 
     fn setup_user_namespace(&self) -> CapsuleResult<()> {
         let pid = std::process::id();
-        
+
         self.write_uid_map(pid)?;
         self.write_gid_map(pid)?;
 
@@ -60,14 +58,10 @@ impl NamespaceManager {
             .write(true)
             .mode(0o644)
             .open(&uid_map_path)
-            .map_err(|e| {
-                SandboxError::UserMapping(format!("Failed to open uid_map: {}", e))
-            })?;
+            .map_err(|e| SandboxError::UserMapping(format!("Failed to open uid_map: {}", e)))?;
 
         file.write_all(uid_map_content.as_bytes())
-            .map_err(|e| {
-                SandboxError::UserMapping(format!("Failed to write uid_map: {}", e))
-            })?;
+            .map_err(|e| SandboxError::UserMapping(format!("Failed to write uid_map: {}", e)))?;
 
         Ok(())
     }
@@ -82,33 +76,25 @@ impl NamespaceManager {
             .write(true)
             .mode(0o644)
             .open(&gid_map_path)
-            .map_err(|e| {
-                SandboxError::UserMapping(format!("Failed to open gid_map: {}", e))
-            })?;
+            .map_err(|e| SandboxError::UserMapping(format!("Failed to open gid_map: {}", e)))?;
 
         file.write_all(gid_map_content.as_bytes())
-            .map_err(|e| {
-                SandboxError::UserMapping(format!("Failed to write gid_map: {}", e))
-            })?;
+            .map_err(|e| SandboxError::UserMapping(format!("Failed to write gid_map: {}", e)))?;
 
         Ok(())
     }
 
     fn deny_setgroups(&self, pid: u32) -> CapsuleResult<()> {
         let setgroups_path = format!("/proc/{}/setgroups", pid);
-        
+
         let mut file = OpenOptions::new()
             .write(true)
             .mode(0o644)
             .open(&setgroups_path)
-            .map_err(|e| {
-                SandboxError::UserMapping(format!("Failed to open setgroups: {}", e))
-            })?;
+            .map_err(|e| SandboxError::UserMapping(format!("Failed to open setgroups: {}", e)))?;
 
         file.write_all(b"deny\n")
-            .map_err(|e| {
-                SandboxError::UserMapping(format!("Failed to deny setgroups: {}", e))
-            })?;
+            .map_err(|e| SandboxError::UserMapping(format!("Failed to deny setgroups: {}", e)))?;
 
         Ok(())
     }
@@ -117,16 +103,12 @@ impl NamespaceManager {
         use nix::sys::wait::{waitpid, WaitStatus};
         use nix::unistd::{fork, ForkResult, Pid};
 
-        match unsafe { fork() }.map_err(|e| {
-            SandboxError::NamespaceCreation {
-                namespace: format!("fork failed: {}", e),
-            }
+        match unsafe { fork() }.map_err(|e| SandboxError::NamespaceCreation {
+            namespace: format!("fork failed: {}", e),
         })? {
             ForkResult::Parent { child } => {
-                match waitpid(child, None).map_err(|e| {
-                    SandboxError::NamespaceCreation {
-                        namespace: format!("waitpid failed: {}", e),
-                    }
+                match waitpid(child, None).map_err(|e| SandboxError::NamespaceCreation {
+                    namespace: format!("waitpid failed: {}", e),
                 })? {
                     WaitStatus::Exited(_, code) => {
                         std::process::exit(code);
@@ -159,12 +141,11 @@ impl NamespaceManager {
         }
 
         unsafe {
-            signal::signal(Signal::SIGCHLD, signal::SigHandler::Handler(handle_signal))
-                .map_err(|e| {
-                    SandboxError::NamespaceCreation {
-                        namespace: format!("signal handler setup failed: {}", e),
-                    }
-                })?;
+            signal::signal(Signal::SIGCHLD, signal::SigHandler::Handler(handle_signal)).map_err(
+                |e| SandboxError::NamespaceCreation {
+                    namespace: format!("signal handler setup failed: {}", e),
+                },
+            )?;
         }
 
         Ok(())
@@ -194,7 +175,7 @@ mod tests {
         let uid_map_path = format!("/proc/{}/uid_map", pid);
         let gid_map_path = format!("/proc/{}/gid_map", pid);
         let setgroups_path = format!("/proc/{}/setgroups", pid);
-        
+
         assert!(std::path::Path::new(&uid_map_path).exists());
         assert!(std::path::Path::new(&gid_map_path).exists());
         assert!(std::path::Path::new(&setgroups_path).exists());

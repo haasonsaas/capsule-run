@@ -1,12 +1,14 @@
-mod error;
 mod api;
-mod sandbox;
+mod error;
 mod executor;
+mod sandbox;
 
-use crate::api::{ExecutionRequest, validate_execution_request, ResourceLimits, IsolationConfig, BindMount};
+use crate::api::{
+    validate_execution_request, BindMount, ExecutionRequest, IsolationConfig, ResourceLimits,
+};
 use crate::error::CapsuleResult;
 use crate::executor::Executor;
-use clap::{Parser, ArgAction};
+use clap::{ArgAction, Parser};
 use std::collections::HashMap;
 use std::io::{self, Read};
 use uuid::Uuid;
@@ -84,7 +86,7 @@ struct Cli {
 #[tokio::main]
 async fn main() {
     let result = run().await;
-    
+
     match result {
         Ok(exit_code) => {
             std::process::exit(exit_code);
@@ -101,7 +103,10 @@ async fn run() -> CapsuleResult<i32> {
 
     if cli.verbose {
         eprintln!("capsule-run v{}", env!("CARGO_PKG_VERSION"));
-        eprintln!("Execution ID: {}", cli.execution_id.as_deref().unwrap_or("auto-generated"));
+        eprintln!(
+            "Execution ID: {}",
+            cli.execution_id.as_deref().unwrap_or("auto-generated")
+        );
     }
 
     // Parse execution ID or generate one
@@ -144,7 +149,7 @@ async fn run() -> CapsuleResult<i32> {
     } else {
         serde_json::to_string(&response)?
     };
-    
+
     println!("{}", json_output);
 
     // Return appropriate exit code
@@ -159,7 +164,7 @@ async fn run() -> CapsuleResult<i32> {
 fn read_json_request() -> CapsuleResult<ExecutionRequest> {
     let mut buffer = String::new();
     io::stdin().read_to_string(&mut buffer)?;
-    
+
     let request: ExecutionRequest = serde_json::from_str(&buffer)?;
     Ok(request)
 }
@@ -167,7 +172,8 @@ fn read_json_request() -> CapsuleResult<ExecutionRequest> {
 fn create_request_from_cli(cli: &Cli) -> CapsuleResult<ExecutionRequest> {
     if cli.command.is_empty() {
         return Err(crate::error::CapsuleError::Config(
-            "No command specified. Use --json for JSON input or provide command arguments.".to_string()
+            "No command specified. Use --json for JSON input or provide command arguments."
+                .to_string(),
         ));
     }
 
@@ -177,9 +183,10 @@ fn create_request_from_cli(cli: &Cli) -> CapsuleResult<ExecutionRequest> {
         if let Some((key, value)) = env_var.split_once('=') {
             environment.insert(key.to_string(), value.to_string());
         } else {
-            return Err(crate::error::CapsuleError::Config(
-                format!("Invalid environment variable format: {}. Use KEY=VALUE.", env_var)
-            ));
+            return Err(crate::error::CapsuleError::Config(format!(
+                "Invalid environment variable format: {}. Use KEY=VALUE.",
+                env_var
+            )));
         }
     }
 
@@ -192,12 +199,16 @@ fn create_request_from_cli(cli: &Cli) -> CapsuleResult<ExecutionRequest> {
 
     // Create resource limits
     let resources = ResourceLimits {
-        memory_bytes: cli.memory.as_ref()
+        memory_bytes: cli
+            .memory
+            .as_ref()
             .map(|s| parse_size(s))
             .transpose()?
             .unwrap_or(268_435_456), // 256MB default
         cpu_shares: cli.cpu.unwrap_or(1024),
-        max_output_bytes: cli.max_output.as_ref()
+        max_output_bytes: cli
+            .max_output
+            .as_ref()
             .map(|s| parse_size(s))
             .transpose()?
             .map(|s| s as usize)
@@ -225,7 +236,7 @@ fn create_request_from_cli(cli: &Cli) -> CapsuleResult<ExecutionRequest> {
 
 fn parse_bind_mount(spec: &str) -> CapsuleResult<BindMount> {
     let parts: Vec<&str> = spec.split(':').collect();
-    
+
     match parts.len() {
         2 => {
             Ok(BindMount {
@@ -238,26 +249,30 @@ fn parse_bind_mount(spec: &str) -> CapsuleResult<BindMount> {
             let readonly = match parts[2] {
                 "ro" => true,
                 "rw" => false,
-                _ => return Err(crate::error::CapsuleError::Config(
-                    format!("Invalid bind mount mode '{}'. Use 'ro' or 'rw'.", parts[2])
-                )),
+                _ => {
+                    return Err(crate::error::CapsuleError::Config(format!(
+                        "Invalid bind mount mode '{}'. Use 'ro' or 'rw'.",
+                        parts[2]
+                    )))
+                }
             };
-            
+
             Ok(BindMount {
                 source: parts[0].to_string(),
                 destination: parts[1].to_string(),
                 readonly,
             })
         }
-        _ => Err(crate::error::CapsuleError::Config(
-            format!("Invalid bind mount format '{}'. Use 'source:dest' or 'source:dest:mode'.", spec)
-        )),
+        _ => Err(crate::error::CapsuleError::Config(format!(
+            "Invalid bind mount format '{}'. Use 'source:dest' or 'source:dest:mode'.",
+            spec
+        ))),
     }
 }
 
 fn parse_size(size_str: &str) -> CapsuleResult<u64> {
     let size_str = size_str.trim().to_uppercase();
-    
+
     if let Some(number_part) = size_str.strip_suffix('K') {
         let number: u64 = number_part.parse().map_err(|_| {
             crate::error::CapsuleError::Config(format!("Invalid size format: {}", size_str))
@@ -317,16 +332,24 @@ mod tests {
     #[test]
     fn test_cli_parsing() {
         use clap::Parser;
-        
+
         let cli = Cli::try_parse_from(&[
             "capsule-run",
-            "--timeout", "5000",
-            "--memory", "512M",
-            "--env", "PATH=/usr/bin",
-            "--env", "HOME=/tmp",
-            "--readonly", "/usr",
-            "--", "echo", "hello"
-        ]).unwrap();
+            "--timeout",
+            "5000",
+            "--memory",
+            "512M",
+            "--env",
+            "PATH=/usr/bin",
+            "--env",
+            "HOME=/tmp",
+            "--readonly",
+            "/usr",
+            "--",
+            "echo",
+            "hello",
+        ])
+        .unwrap();
 
         assert_eq!(cli.timeout, Some(5000));
         assert_eq!(cli.memory, Some("512M".to_string()));

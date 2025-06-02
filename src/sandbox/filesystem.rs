@@ -1,6 +1,6 @@
-use crate::api::schema::{IsolationConfig, BindMount};
+use crate::api::schema::{BindMount, IsolationConfig};
 use crate::error::{CapsuleResult, SandboxError};
-use nix::mount::{mount, umount2, MsFlags, MntFlags};
+use nix::mount::{mount, umount2, MntFlags, MsFlags};
 use nix::unistd::{chdir, pivot_root};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -55,7 +55,18 @@ impl FilesystemManager {
         })?;
 
         let essential_dirs = [
-            "bin", "sbin", "usr", "lib", "lib64", "etc", "dev", "proc", "sys", "tmp", "var", "workspace"
+            "bin",
+            "sbin",
+            "usr",
+            "lib",
+            "lib64",
+            "etc",
+            "dev",
+            "proc",
+            "sys",
+            "tmp",
+            "var",
+            "workspace",
         ];
 
         for dir in &essential_dirs {
@@ -101,9 +112,8 @@ impl FilesystemManager {
             Some("proc"),
             MsFlags::MS_NOSUID | MsFlags::MS_NODEV | MsFlags::MS_NOEXEC,
             Some("hidepid=2,gid=proc"),
-        ).map_err(|e| {
-            SandboxError::FilesystemSetup(format!("Failed to mount /proc: {}", e))
-        })?;
+        )
+        .map_err(|e| SandboxError::FilesystemSetup(format!("Failed to mount /proc: {}", e)))?;
 
         // Mount /sys as read-only
         let sys_path = self.root_path.join("sys");
@@ -113,9 +123,8 @@ impl FilesystemManager {
             Some("sysfs"),
             MsFlags::MS_RDONLY | MsFlags::MS_NOSUID | MsFlags::MS_NODEV | MsFlags::MS_NOEXEC,
             None::<&str>,
-        ).map_err(|e| {
-            SandboxError::FilesystemSetup(format!("Failed to mount /sys: {}", e))
-        })?;
+        )
+        .map_err(|e| SandboxError::FilesystemSetup(format!("Failed to mount /sys: {}", e)))?;
 
         // Mount /tmp as tmpfs
         let tmp_path = self.root_path.join("tmp");
@@ -125,9 +134,8 @@ impl FilesystemManager {
             Some("tmpfs"),
             MsFlags::MS_NOSUID | MsFlags::MS_NODEV,
             Some("size=64M,mode=1777"),
-        ).map_err(|e| {
-            SandboxError::FilesystemSetup(format!("Failed to mount /tmp: {}", e))
-        })?;
+        )
+        .map_err(|e| SandboxError::FilesystemSetup(format!("Failed to mount /tmp: {}", e)))?;
 
         // Mount /var as tmpfs
         let var_path = self.root_path.join("var");
@@ -137,16 +145,15 @@ impl FilesystemManager {
             Some("tmpfs"),
             MsFlags::MS_NOSUID | MsFlags::MS_NODEV,
             Some("size=32M,mode=755"),
-        ).map_err(|e| {
-            SandboxError::FilesystemSetup(format!("Failed to mount /var: {}", e))
-        })?;
+        )
+        .map_err(|e| SandboxError::FilesystemSetup(format!("Failed to mount /var: {}", e)))?;
 
         Ok(())
     }
 
     fn setup_dev_filesystem(&self) -> CapsuleResult<()> {
         let dev_path = self.root_path.join("dev");
-        
+
         // Mount /dev as tmpfs
         mount(
             Some("tmpfs"),
@@ -154,9 +161,8 @@ impl FilesystemManager {
             Some("tmpfs"),
             MsFlags::MS_NOSUID | MsFlags::MS_NOEXEC,
             Some("size=5M,mode=755"),
-        ).map_err(|e| {
-            SandboxError::FilesystemSetup(format!("Failed to mount /dev: {}", e))
-        })?;
+        )
+        .map_err(|e| SandboxError::FilesystemSetup(format!("Failed to mount /dev: {}", e)))?;
 
         // Create essential device nodes
         let essential_devices = [
@@ -170,30 +176,33 @@ impl FilesystemManager {
         for (name, major, minor) in &essential_devices {
             let device_path = dev_path.join(name);
             let device_number = nix::sys::stat::makedev(*major, *minor);
-            
+
             nix::unistd::mknod(
                 &device_path,
                 nix::sys::stat::SFlag::S_IFCHR,
-                nix::sys::stat::Mode::S_IRUSR | nix::sys::stat::Mode::S_IWUSR | nix::sys::stat::Mode::S_IRGRP | nix::sys::stat::Mode::S_IROTH,
+                nix::sys::stat::Mode::S_IRUSR
+                    | nix::sys::stat::Mode::S_IWUSR
+                    | nix::sys::stat::Mode::S_IRGRP
+                    | nix::sys::stat::Mode::S_IROTH,
                 device_number,
-            ).map_err(|e| {
+            )
+            .map_err(|e| {
                 SandboxError::FilesystemSetup(format!("Failed to create device {}: {}", name, e))
             })?;
         }
 
         // Create stdin, stdout, stderr symlinks
-        let stdio_links = [
-            ("stdin", "0"),
-            ("stdout", "1"),
-            ("stderr", "2"),
-        ];
+        let stdio_links = [("stdin", "0"), ("stdout", "1"), ("stderr", "2")];
 
         for (link_name, target) in &stdio_links {
             let link_path = dev_path.join(link_name);
             let target_path = format!("/proc/self/fd/{}", target);
-            
+
             std::os::unix::fs::symlink(&target_path, &link_path).map_err(|e| {
-                SandboxError::FilesystemSetup(format!("Failed to create {} symlink: {}", link_name, e))
+                SandboxError::FilesystemSetup(format!(
+                    "Failed to create {} symlink: {}",
+                    link_name, e
+                ))
             })?;
         }
 
@@ -243,8 +252,13 @@ impl FilesystemManager {
     fn setup_bind_mounts(&self, bind_mounts: &[BindMount]) -> CapsuleResult<()> {
         for bind_mount in bind_mounts {
             let source = Path::new(&bind_mount.source);
-            let target = self.root_path.join(bind_mount.destination.strip_prefix('/').unwrap_or(&bind_mount.destination));
-            
+            let target = self.root_path.join(
+                bind_mount
+                    .destination
+                    .strip_prefix('/')
+                    .unwrap_or(&bind_mount.destination),
+            );
+
             if source.exists() {
                 if let Some(parent) = target.parent() {
                     fs::create_dir_all(parent).map_err(|e| {
@@ -302,7 +316,8 @@ impl FilesystemManager {
             None::<&str>,
             MsFlags::MS_BIND,
             None::<&str>,
-        ).map_err(|e| {
+        )
+        .map_err(|e| {
             SandboxError::FilesystemSetup(format!(
                 "Failed to bind mount {} to {}: {}",
                 source.display(),
@@ -318,7 +333,8 @@ impl FilesystemManager {
             None::<&str>,
             MsFlags::MS_BIND | MsFlags::MS_REMOUNT | MsFlags::MS_RDONLY,
             None::<&str>,
-        ).map_err(|e| {
+        )
+        .map_err(|e| {
             SandboxError::FilesystemSetup(format!(
                 "Failed to remount {} as readonly: {}",
                 target.display(),
@@ -365,7 +381,8 @@ impl FilesystemManager {
             None::<&str>,
             MsFlags::MS_BIND,
             None::<&str>,
-        ).map_err(|e| {
+        )
+        .map_err(|e| {
             SandboxError::FilesystemSetup(format!(
                 "Failed to bind mount {} to {}: {}",
                 source.display(),
@@ -378,9 +395,8 @@ impl FilesystemManager {
     }
 
     fn perform_pivot_root(&self) -> CapsuleResult<()> {
-        pivot_root(&self.root_path, &self.old_root_path).map_err(|e| {
-            SandboxError::FilesystemSetup(format!("Failed to pivot root: {}", e))
-        })?;
+        pivot_root(&self.root_path, &self.old_root_path)
+            .map_err(|e| SandboxError::FilesystemSetup(format!("Failed to pivot root: {}", e)))?;
 
         // Change to new root
         chdir("/").map_err(|e| {
@@ -392,14 +408,13 @@ impl FilesystemManager {
 
     fn setup_working_directory(&self, working_dir: &str) -> CapsuleResult<()> {
         let working_path = Path::new(working_dir);
-        
+
         // Create working directory if it doesn't exist
         if !working_path.exists() {
             fs::create_dir_all(working_path).map_err(|e| {
                 SandboxError::FilesystemSetup(format!(
                     "Failed to create working directory {}: {}",
-                    working_dir,
-                    e
+                    working_dir, e
                 ))
             })?;
         }
@@ -408,8 +423,7 @@ impl FilesystemManager {
         chdir(working_path).map_err(|e| {
             SandboxError::FilesystemSetup(format!(
                 "Failed to change to working directory {}: {}",
-                working_dir,
-                e
+                working_dir, e
             ))
         })?;
 
@@ -459,16 +473,19 @@ mod tests {
         let execution_id = Uuid::new_v4();
         let manager = FilesystemManager::new(execution_id);
         assert!(manager.is_ok());
-        
+
         let manager = manager.unwrap();
-        assert!(manager.root_path.to_string_lossy().contains(&execution_id.to_string()));
+        assert!(manager
+            .root_path
+            .to_string_lossy()
+            .contains(&execution_id.to_string()));
     }
 
     #[test]
     fn test_essential_directories() {
         let execution_id = Uuid::new_v4();
         let manager = FilesystemManager::new(execution_id).unwrap();
-        
+
         // This test would require root privileges to actually create the filesystem
         // In a real test environment, we'd check the directory structure
         assert!(manager.root_path.is_absolute());

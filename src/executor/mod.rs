@@ -1,16 +1,19 @@
 pub mod io;
 pub mod monitor;
 
-use crate::api::schema::{ExecutionRequest, ExecutionResponse, ExecutionMetrics};
-use crate::error::{CapsuleResult, CapsuleError, ExecutionError, ErrorCode};
-use crate::sandbox::{Sandbox, ResourceUsage};
+use crate::api::schema::{ExecutionMetrics, ExecutionRequest, ExecutionResponse};
+use crate::error::{CapsuleError, CapsuleResult, ErrorCode, ExecutionError};
+use crate::sandbox::{ResourceUsage, Sandbox};
 use chrono::{DateTime, Utc};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 use uuid::Uuid;
 
-pub use io::{IoCapture, StreamingIoCapture, IoEvent};
-pub use monitor::{ResourceMonitor, ProcessMonitor, TimeoutMonitor, MonitoringResult, ProcessStatus, ResourceProvider};
+pub use io::{IoCapture, IoEvent, StreamingIoCapture};
+pub use monitor::{
+    MonitoringResult, ProcessMonitor, ProcessStatus, ResourceMonitor, ResourceProvider,
+    TimeoutMonitor,
+};
 
 pub struct Executor {
     execution_id: Uuid,
@@ -25,7 +28,7 @@ pub struct ExecutionResult {
 impl Executor {
     pub fn new(execution_id: Uuid) -> CapsuleResult<Self> {
         let sandbox = Sandbox::new(execution_id)?;
-        
+
         Ok(Self {
             execution_id,
             sandbox,
@@ -34,7 +37,7 @@ impl Executor {
 
     pub async fn execute(mut self, request: ExecutionRequest) -> CapsuleResult<ExecutionResponse> {
         let started = Utc::now();
-        
+
         // Setup sandbox
         match self.sandbox.setup(&request.resources, &request.isolation) {
             Ok(_) => {}
@@ -95,13 +98,13 @@ impl Executor {
 
         // Configure stdio
         cmd.stdout(Stdio::piped())
-           .stderr(Stdio::piped())
-           .stdin(Stdio::null());
+            .stderr(Stdio::piped())
+            .stdin(Stdio::null());
 
         // Spawn the process
-        let mut child = cmd.spawn().map_err(|e| {
-            ExecutionError::SpawnFailed(format!("Failed to spawn command: {}", e))
-        })?;
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| ExecutionError::SpawnFailed(format!("Failed to spawn command: {}", e)))?;
 
         // Setup I/O capture
         let stdout = child.stdout.take();
@@ -127,23 +130,26 @@ impl Executor {
                 Ok(Some(status)) => {
                     // Process has exited
                     let exit_code = status.code().unwrap_or(-1);
-                    
+
                     // Collect I/O
                     let (stdout, stderr) = io_capture.wait_for_completion()?;
-                    
+
                     // Get basic resource usage
-                    let final_usage = self.sandbox.get_resource_usage().unwrap_or_else(|_| ResourceUsage {
-                        memory_bytes: 0,
-                        cpu_time_us: 0,
-                        user_time_us: 0,
-                        kernel_time_us: 0,
-                        io_bytes_read: 0,
-                        io_bytes_written: 0,
-                    });
-                    
+                    let final_usage =
+                        self.sandbox
+                            .get_resource_usage()
+                            .unwrap_or_else(|_| ResourceUsage {
+                                memory_bytes: 0,
+                                cpu_time_us: 0,
+                                user_time_us: 0,
+                                kernel_time_us: 0,
+                                io_bytes_read: 0,
+                                io_bytes_written: 0,
+                            });
+
                     let completed = Utc::now();
                     let wall_time = start_time.elapsed();
-                    
+
                     let metrics = ExecutionMetrics {
                         wall_time_ms: wall_time.as_millis() as u64,
                         cpu_time_ms: final_usage.cpu_time_us / 1000,
@@ -170,8 +176,10 @@ impl Executor {
                 Err(e) => {
                     let _ = child.kill();
                     return Err(ExecutionError::MonitoringError(format!(
-                        "Failed to check process status: {}", e
-                    )).into());
+                        "Failed to check process status: {}",
+                        e
+                    ))
+                    .into());
                 }
             }
 
@@ -222,19 +230,19 @@ impl<'a> ResourceProvider for SandboxResourceProvider<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::api::schema::{ResourceLimits, IsolationConfig};
+    use crate::api::schema::{IsolationConfig, ResourceLimits};
     use std::collections::HashMap;
 
     #[tokio::test]
     async fn test_executor_simple_command() {
         let execution_id = Uuid::new_v4();
         let executor = Executor::new(execution_id);
-        
+
         // This test might fail without proper setup, but demonstrates the API
         if executor.is_err() {
             return; // Skip test if sandbox setup fails
         }
-        
+
         let request = ExecutionRequest {
             command: vec!["echo".to_string(), "hello".to_string()],
             environment: HashMap::new(),
@@ -244,7 +252,7 @@ mod tests {
         };
 
         let result = executor.unwrap().execute(request).await;
-        
+
         if let Ok(response) = result {
             match response.status {
                 crate::api::schema::ExecutionStatus::Success => {
@@ -262,11 +270,11 @@ mod tests {
     async fn test_executor_timeout() {
         let execution_id = Uuid::new_v4();
         let executor = Executor::new(execution_id);
-        
+
         if executor.is_err() {
             return; // Skip test if sandbox setup fails
         }
-        
+
         let request = ExecutionRequest {
             command: vec!["sleep".to_string(), "10".to_string()],
             environment: HashMap::new(),
@@ -276,7 +284,7 @@ mod tests {
         };
 
         let result = executor.unwrap().execute(request).await;
-        
+
         if let Ok(response) = result {
             match response.status {
                 crate::api::schema::ExecutionStatus::Timeout => {

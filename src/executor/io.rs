@@ -1,8 +1,8 @@
 use crate::error::{CapsuleResult, ExecutionError};
 use std::io::Read;
-use std::process::{ChildStdout, ChildStderr};
-use std::thread;
+use std::process::{ChildStderr, ChildStdout};
 use std::sync::mpsc;
+use std::thread;
 use std::time::Duration;
 
 pub struct IoCapture {
@@ -79,7 +79,8 @@ impl IoCapture {
                     return Err(ExecutionError::IoCaptureError(format!(
                         "Failed to read from {}: {}",
                         stream_name, e
-                    )).into());
+                    ))
+                    .into());
                 }
             }
         }
@@ -137,10 +138,14 @@ impl StreamingIoCapture {
     }
 
     pub fn read_available(&self, timeout: Duration) -> (Option<IoEvent>, Option<IoEvent>) {
-        let stdout_event = self.stdout_receiver.as_ref()
+        let stdout_event = self
+            .stdout_receiver
+            .as_ref()
             .and_then(|rx| rx.recv_timeout(timeout).ok());
-        
-        let stderr_event = self.stderr_receiver.as_ref()
+
+        let stderr_event = self
+            .stderr_receiver
+            .as_ref()
             .and_then(|rx| rx.recv_timeout(Duration::from_millis(1)).ok());
 
         (stdout_event, stderr_event)
@@ -156,7 +161,11 @@ impl StreamingIoCapture {
                 match event {
                     IoEvent::Data(data) => stdout_data.extend(data),
                     IoEvent::Error(err) => {
-                        return Err(ExecutionError::IoCaptureError(format!("stdout error: {}", err)).into());
+                        return Err(ExecutionError::IoCaptureError(format!(
+                            "stdout error: {}",
+                            err
+                        ))
+                        .into());
                     }
                     IoEvent::Eof => break,
                 }
@@ -169,7 +178,11 @@ impl StreamingIoCapture {
                 match event {
                     IoEvent::Data(data) => stderr_data.extend(data),
                     IoEvent::Error(err) => {
-                        return Err(ExecutionError::IoCaptureError(format!("stderr error: {}", err)).into());
+                        return Err(ExecutionError::IoCaptureError(format!(
+                            "stderr error: {}",
+                            err
+                        ))
+                        .into());
                     }
                     IoEvent::Eof => break,
                 }
@@ -214,7 +227,7 @@ impl StreamingIoCapture {
                         )));
                         break;
                     }
-                    
+
                     let data = buffer[..n].to_vec();
                     if sender.send(IoEvent::Data(data)).is_err() {
                         break; // Receiver dropped
@@ -275,7 +288,7 @@ mod tests {
 
         assert!(result.is_err());
         if let Err(e) = result {
-            assert!(e.to_string().contains("Output exceeded size limit"));
+            assert!(e.to_string().contains("Output size limit exceeded"));
         }
     }
 }

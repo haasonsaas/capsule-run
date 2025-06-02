@@ -1,4 +1,4 @@
-use crate::api::schema::{ExecutionRequest, ResourceLimits, IsolationConfig};
+use crate::api::schema::{ExecutionRequest, IsolationConfig, ResourceLimits};
 use crate::error::{CapsuleError, CapsuleResult};
 use std::path::Path;
 
@@ -230,7 +230,10 @@ fn validate_isolation(isolation: &IsolationConfig) -> CapsuleResult<()> {
 
 fn validate_path(path: &str, path_type: &str) -> CapsuleResult<()> {
     if path.is_empty() {
-        return Err(CapsuleError::Config(format!("{} cannot be empty", path_type)));
+        return Err(CapsuleError::Config(format!(
+            "{} cannot be empty",
+            path_type
+        )));
     }
 
     if !path.starts_with('/') {
@@ -267,7 +270,7 @@ fn validate_path(path: &str, path_type: &str) -> CapsuleResult<()> {
 
 fn is_safe_path(path: &str) -> bool {
     let path = Path::new(path);
-    
+
     for component in path.components() {
         match component {
             std::path::Component::ParentDir => return false,
@@ -324,7 +327,11 @@ mod tests {
 
     #[test]
     fn test_validate_command_valid() {
-        let result = validate_command(&["python".to_string(), "-c".to_string(), "print('hello')".to_string()]);
+        let result = validate_command(&[
+            "python".to_string(),
+            "-c".to_string(),
+            "print('hello')".to_string(),
+        ]);
         assert!(result.is_ok());
     }
 
