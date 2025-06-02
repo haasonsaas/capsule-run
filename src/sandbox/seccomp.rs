@@ -28,8 +28,12 @@ impl SeccompFilter {
 
     pub fn setup_allowlist(&mut self) -> CapsuleResult<()> {
         let mut ctx = self.ctx.lock().unwrap();
-        let allowed_syscalls = [
-            // Essential I/O operations
+        
+        // Define allowed syscalls in a cross-platform way
+        let mut allowed_syscalls = Vec::new();
+        
+        // Essential I/O operations (universal)
+        allowed_syscalls.extend_from_slice(&[
             libc::SYS_read,
             libc::SYS_write,
             libc::SYS_readv,
@@ -38,39 +42,27 @@ impl SeccompFilter {
             libc::SYS_pwrite64,
             libc::SYS_close,
             libc::SYS_lseek,
-            // File operations
-            libc::SYS_open,
+        ]);
+        
+        // File operations (universal modern syscalls)
+        allowed_syscalls.extend_from_slice(&[
             libc::SYS_openat,
-            libc::SYS_creat,
-            libc::SYS_access,
             libc::SYS_faccessat,
-            libc::SYS_stat,
             libc::SYS_fstat,
-            libc::SYS_lstat,
             libc::SYS_newfstatat,
-            libc::SYS_readlink,
             libc::SYS_readlinkat,
             libc::SYS_getcwd,
             libc::SYS_chdir,
             libc::SYS_fchdir,
-            libc::SYS_mkdir,
             libc::SYS_mkdirat,
-            libc::SYS_rmdir,
-            libc::SYS_unlink,
             libc::SYS_unlinkat,
-            libc::SYS_rename,
             libc::SYS_renameat,
             libc::SYS_renameat2,
-            libc::SYS_link,
             libc::SYS_linkat,
-            libc::SYS_symlink,
             libc::SYS_symlinkat,
-            libc::SYS_chmod,
             libc::SYS_fchmod,
             libc::SYS_fchmodat,
-            libc::SYS_chown,
             libc::SYS_fchown,
-            libc::SYS_lchown,
             libc::SYS_fchownat,
             libc::SYS_truncate,
             libc::SYS_ftruncate,
@@ -80,14 +72,55 @@ impl SeccompFilter {
             libc::SYS_sync,
             libc::SYS_syncfs,
             libc::SYS_dup,
-            libc::SYS_dup2,
             libc::SYS_dup3,
-            libc::SYS_pipe,
             libc::SYS_pipe2,
-            // Directory operations
-            libc::SYS_getdents,
-            libc::SYS_getdents64,
-            // Memory management
+        ]);
+        
+        // Architecture-specific legacy syscalls (x86/x86_64 only)
+        #[cfg(any(target_arch = "x86", target_arch = "x86_64"))]
+        {
+            allowed_syscalls.extend_from_slice(&[
+                libc::SYS_open,
+                libc::SYS_creat,
+                libc::SYS_access,
+                libc::SYS_stat,
+                libc::SYS_lstat,
+                libc::SYS_readlink,
+                libc::SYS_mkdir,
+                libc::SYS_rmdir,
+                libc::SYS_unlink,
+                libc::SYS_rename,
+                libc::SYS_link,
+                libc::SYS_symlink,
+                libc::SYS_chmod,
+                libc::SYS_chown,
+                libc::SYS_lchown,
+                libc::SYS_dup2,
+                libc::SYS_pipe,
+                libc::SYS_getdents,
+                libc::SYS_getpgrp,
+                libc::SYS_time,
+                libc::SYS_alarm,
+                libc::SYS_pause,
+                libc::SYS_fork,
+                libc::SYS_vfork,
+                libc::SYS_select,
+                libc::SYS_poll,
+                libc::SYS_epoll_create,
+                libc::SYS_epoll_wait,
+                libc::SYS_eventfd,
+                libc::SYS_signalfd,
+                libc::SYS_arch_prctl,
+                libc::SYS_set_thread_area,
+                libc::SYS_get_thread_area,
+            ]);
+        }
+        
+        // Directory operations
+        allowed_syscalls.push(libc::SYS_getdents64);
+        
+        // Memory management (universal)
+        allowed_syscalls.extend_from_slice(&[
             libc::SYS_mmap,
             libc::SYS_munmap,
             libc::SYS_mprotect,
@@ -99,7 +132,10 @@ impl SeccompFilter {
             libc::SYS_brk,
             libc::SYS_mlock2,
             libc::SYS_memfd_create,
-            // Process/thread management
+        ]);
+        
+        // Process/thread management (universal)
+        allowed_syscalls.extend_from_slice(&[
             libc::SYS_getpid,
             libc::SYS_getppid,
             libc::SYS_getuid,
@@ -111,12 +147,13 @@ impl SeccompFilter {
             libc::SYS_setgid,
             libc::SYS_setgroups,
             libc::SYS_setsid,
-            libc::SYS_getpgrp,
             libc::SYS_setpgid,
             libc::SYS_getpgid,
             libc::SYS_getsid,
-            // Time operations
-            libc::SYS_time,
+        ]);
+        
+        // Time operations (universal)
+        allowed_syscalls.extend_from_slice(&[
             libc::SYS_gettimeofday,
             libc::SYS_settimeofday,
             libc::SYS_clock_gettime,
@@ -124,9 +161,10 @@ impl SeccompFilter {
             libc::SYS_clock_getres,
             libc::SYS_clock_nanosleep,
             libc::SYS_nanosleep,
-            libc::SYS_alarm,
-            libc::SYS_pause,
-            // Signal handling
+        ]);
+        
+        // Signal handling (universal)
+        allowed_syscalls.extend_from_slice(&[
             libc::SYS_kill,
             libc::SYS_tkill,
             libc::SYS_tgkill,
@@ -138,53 +176,58 @@ impl SeccompFilter {
             libc::SYS_rt_sigtimedwait,
             libc::SYS_rt_sigqueueinfo,
             libc::SYS_rt_sigreturn,
-            // Process execution and control
+        ]);
+        
+        // Process execution and control (universal)
+        allowed_syscalls.extend_from_slice(&[
             libc::SYS_execve,
             libc::SYS_execveat,
-            libc::SYS_fork,
-            libc::SYS_vfork,
             libc::SYS_wait4,
             libc::SYS_waitid,
             libc::SYS_exit,
             libc::SYS_exit_group,
-            // Polling and event management
-            libc::SYS_select,
+        ]);
+        
+        // Polling and event management (universal modern syscalls)
+        allowed_syscalls.extend_from_slice(&[
             libc::SYS_pselect6,
-            libc::SYS_poll,
             libc::SYS_ppoll,
-            libc::SYS_epoll_create,
             libc::SYS_epoll_create1,
             libc::SYS_epoll_ctl,
-            libc::SYS_epoll_wait,
             libc::SYS_epoll_pwait,
-            libc::SYS_eventfd,
             libc::SYS_eventfd2,
-            libc::SYS_signalfd,
             libc::SYS_signalfd4,
             libc::SYS_timerfd_create,
             libc::SYS_timerfd_settime,
             libc::SYS_timerfd_gettime,
-            // Resource limits
+        ]);
+        
+        // Resource limits (universal)
+        allowed_syscalls.extend_from_slice(&[
             libc::SYS_getrlimit,
             libc::SYS_setrlimit,
             libc::SYS_prlimit64,
             libc::SYS_getrusage,
-            // Thread operations (limited)
+        ]);
+        
+        // Thread operations (universal)
+        allowed_syscalls.extend_from_slice(&[
             libc::SYS_futex,
-            libc::SYS_set_thread_area,
-            libc::SYS_get_thread_area,
             libc::SYS_set_tid_address,
             libc::SYS_gettid,
-            // Architecture-specific
-            libc::SYS_arch_prctl,
-            // Filesystem info
+        ]);
+        
+        // Filesystem info (universal)
+        allowed_syscalls.extend_from_slice(&[
             libc::SYS_statfs,
             libc::SYS_fstatfs,
-            // fcntl operations
+        ]);
+        
+        // fcntl operations (universal)
+        allowed_syscalls.extend_from_slice(&[
             libc::SYS_fcntl,
-            // ioctl (restricted)
             libc::SYS_ioctl,
-        ];
+        ]);
 
         for &syscall in &allowed_syscalls {
             ctx.inner
